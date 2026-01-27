@@ -58,6 +58,7 @@ import {
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 
 const defaultFormData: StockFormData = {
@@ -92,9 +93,11 @@ export default function AdminStock() {
   const [deletingStock, setDeletingStock] = useState<StockItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [importPreview, setImportPreview] = useState<StockFormData[]>([]);
+  const [importPreview, setImportPreview] = useState<Array<StockFormData & { isDuplicate?: boolean }>>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importProductId, setImportProductId] = useState<string>('');
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
 
   const filteredStock = stockItems?.filter(item => {
     const matchesSearch = 
@@ -238,9 +241,10 @@ export default function AdminStock() {
     }
   };
 
-  const processImportData = (lines: (string | undefined)[][]) => {
+  const processImportData = async (lines: (string | undefined)[][]) => {
     const errors: string[] = [];
-    const validItems: StockFormData[] = [];
+    const validItems: Array<StockFormData & { isDuplicate?: boolean }> = [];
+    const secretDataList: string[] = [];
     
     lines.forEach((row, idx) => {
       // Skip empty rows or header rows
@@ -262,10 +266,18 @@ export default function AdminStock() {
         return;
       }
 
+      // Check for duplicates within the file itself
+      if (secretDataList.includes(secretData)) {
+        errors.push(`Baris ${idx + 1}: Duplikat dalam file`);
+        return;
+      }
+      
+      secretDataList.push(secretData);
       validItems.push({
         product_id: '',
         secret_data: secretData,
         expires_at: expiresAt,
+        isDuplicate: false,
       });
     });
 
@@ -278,6 +290,36 @@ export default function AdminStock() {
       return;
     }
 
+    // Check for duplicates in database
+    try {
+      const { data: existingStock } = await supabase
+        .from('stock_items')
+        .select('secret_data')
+        .in('secret_data', secretDataList);
+
+      const existingSecrets = new Set(existingStock?.map(s => s.secret_data) || []);
+      let dupCount = 0;
+      
+      validItems.forEach(item => {
+        if (existingSecrets.has(item.secret_data)) {
+          item.isDuplicate = true;
+          dupCount++;
+        }
+      });
+
+      setDuplicateCount(dupCount);
+      
+      if (dupCount > 0) {
+        toast({
+          title: 'Duplikat ditemukan',
+          description: `${dupCount} item sudah ada di database`,
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('Error checking duplicates:', err);
+    }
+
     setImportPreview(validItems);
     setImportErrors(errors);
     setImportDialogOpen(true);
@@ -286,9 +328,24 @@ export default function AdminStock() {
   const handleImportConfirm = async () => {
     if (importPreview.length === 0 || !importProductId) return;
     
-    const itemsWithProduct = importPreview.map(item => ({
-      ...item,
+    // Filter out duplicates if skipDuplicates is true
+    const itemsToImport = skipDuplicates 
+      ? importPreview.filter(item => !item.isDuplicate)
+      : importPreview;
+    
+    if (itemsToImport.length === 0) {
+      toast({
+        title: 'Tidak ada data',
+        description: 'Semua item adalah duplikat',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    const itemsWithProduct = itemsToImport.map(item => ({
       product_id: importProductId,
+      secret_data: item.secret_data,
+      expires_at: item.expires_at,
     }));
 
     try {
@@ -297,6 +354,7 @@ export default function AdminStock() {
       setImportPreview([]);
       setImportErrors([]);
       setImportProductId('');
+      setDuplicateCount(0);
     } catch (error) {
       console.error('Import failed:', error);
     }
@@ -684,7 +742,7 @@ export default function AdminStock() {
               Import Stok
             </DialogTitle>
             <DialogDescription>
-              Import stok dari file CSV/TXT (satu kode per baris)
+              Import stok dari file CSV, TXT, XLS, atau XLSX
             </DialogDescription>
           </DialogHeader>
           
@@ -716,29 +774,119 @@ export default function AdminStock() {
               </div>
             )}
 
+            {duplicateCount > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                <p className="text-sm font-medium text-amber-600 mb-2">
+                  ⚠️ {duplicateCount} item duplikat ditemukan
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Item berikut sudah ada di database dan akan ditandai.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="skipDuplicates"
+                    checked={skipDuplicates}
+                    onCheckedChange={(checked) => setSkipDuplicates(checked === true)}
+                  />
+                  <Label htmlFor="skipDuplicates" className="text-sm cursor-pointer">
+                    Skip item duplikat (hanya import yang baru)
+                  </Label>
+                </div>
+              </div>
+            )}
+
             {importPreview.length > 0 && (
               <div className="bg-muted/50 rounded-lg p-3">
                 <p className="text-sm">
-                  <span className="font-semibold text-primary">{importPreview.length}</span> stok siap diimport
+                  <span className="font-semibold text-primary">
+                    {skipDuplicates 
+                      ? importPreview.filter(i => !i.isDuplicate).length 
+                      : importPreview.length}
+                  </span> stok siap diimport
+                  {duplicateCount > 0 && skipDuplicates && (
+                    <span className="text-muted-foreground"> ({duplicateCount} duplikat dilewati)</span>
+                  )}
                 </p>
+                
+                {/* Preview table */}
+                <div className="mt-3 max-h-40 overflow-y-auto border rounded">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Kode</TableHead>
+                        <TableHead className="text-xs">Kadaluarsa</TableHead>
+                        <TableHead className="text-xs">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.slice(0, 10).map((item, idx) => (
+                        <TableRow 
+                          key={idx} 
+                          className={item.isDuplicate ? 'opacity-50 bg-amber-500/5' : ''}
+                        >
+                          <TableCell className="text-xs font-mono py-1">
+                            {item.secret_data.length > 30 
+                              ? item.secret_data.substring(0, 30) + '...' 
+                              : item.secret_data}
+                          </TableCell>
+                          <TableCell className="text-xs py-1">
+                            {item.expires_at || '-'}
+                          </TableCell>
+                          <TableCell className="py-1">
+                            {item.isDuplicate ? (
+                              <Badge variant="outline" className="text-xs text-amber-600 border-amber-500">
+                                Duplikat
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-green-600 border-green-500">
+                                Baru
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {importPreview.length > 10 && (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-xs text-center text-muted-foreground py-2">
+                            ... dan {importPreview.length - 10} item lainnya
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
 
             <Button variant="outline" size="sm" onClick={downloadTemplate}>
               <Download className="h-4 w-4 mr-2" />
-              Download Template
+              Download Template Excel
             </Button>
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setImportDialogOpen(false);
+              setImportPreview([]);
+              setImportErrors([]);
+              setDuplicateCount(0);
+            }}>
               Batal
             </Button>
             <Button 
               onClick={handleImportConfirm}
-              disabled={importPreview.length === 0 || !importProductId || isImporting}
+              disabled={
+                importPreview.length === 0 || 
+                !importProductId || 
+                isImporting ||
+                (skipDuplicates && importPreview.filter(i => !i.isDuplicate).length === 0)
+              }
             >
-              {isImporting ? 'Mengimport...' : `Import ${importPreview.length} Stok`}
+              {isImporting ? 'Mengimport...' : `Import ${
+                skipDuplicates 
+                  ? importPreview.filter(i => !i.isDuplicate).length 
+                  : importPreview.length
+              } Stok`}
             </Button>
           </DialogFooter>
         </DialogContent>
