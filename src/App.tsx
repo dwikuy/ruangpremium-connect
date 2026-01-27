@@ -12,6 +12,11 @@ import Register from "./pages/Register";
 import Checkout from "./pages/Checkout";
 import Invoice from "./pages/Invoice";
 import Track from "./pages/Track";
+import Account from "./pages/Account";
+import AccountOrders from "./pages/AccountOrders";
+import AccountOrderDetail from "./pages/AccountOrderDetail";
+import AccountPoints from "./pages/AccountPoints";
+import AccountSettings from "./pages/AccountSettings";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +36,12 @@ const App = () => (
           <Route path="/track/:orderId" element={<Track />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          {/* Member Dashboard Routes */}
+          <Route path="/account" element={<Account />} />
+          <Route path="/account/orders" element={<AccountOrders />} />
+          <Route path="/account/orders/:orderId" element={<AccountOrderDetail />} />
+          <Route path="/account/points" element={<AccountPoints />} />
+          <Route path="/account/settings" element={<AccountSettings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
