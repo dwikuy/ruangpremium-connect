@@ -58,6 +58,7 @@ import {
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
 
 const defaultFormData: StockFormData = {
   product_id: '',
@@ -177,57 +178,109 @@ export default function AdminStock() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+    const fileName = file.name.toLowerCase();
+    const isCSV = fileName.endsWith('.csv') || fileName.endsWith('.txt');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isCSV && !isExcel) {
       toast({
         title: 'Format tidak valid',
-        description: 'Harap upload file CSV atau TXT',
+        description: 'Harap upload file CSV, TXT, XLS, atau XLSX',
         variant: 'destructive',
       });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const lines = parseCSV(text);
-        
-        const errors: string[] = [];
-        const validItems: StockFormData[] = [];
-        
-        lines.forEach((row, idx) => {
-          const secretData = row[0]?.trim();
-          const expiresAt = row[1]?.trim() || null;
+    if (isExcel) {
+      // Handle Excel files
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = event.target?.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1 });
           
-          if (!secretData) {
-            errors.push(`Baris ${idx + 1}: Data kosong`);
-            return;
-          }
-
-          validItems.push({
-            product_id: '', // Will be set from importProductId
-            secret_data: secretData,
-            expires_at: expiresAt,
+          processImportData(jsonData as string[][]);
+        } catch (err) {
+          console.error('Excel parse error:', err);
+          toast({
+            title: 'Gagal membaca file',
+            description: 'Format file Excel tidak valid',
+            variant: 'destructive',
           });
-        });
-
-        setImportPreview(validItems);
-        setImportErrors(errors);
-        setImportDialogOpen(true);
-      } catch (err) {
-        console.error('Parse error:', err);
-        toast({
-          title: 'Gagal membaca file',
-          description: 'Format file tidak valid',
-          variant: 'destructive',
-        });
-      }
-    };
-    reader.readAsText(file);
+        }
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      // Handle CSV/TXT files
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          const lines = parseCSV(text);
+          processImportData(lines);
+        } catch (err) {
+          console.error('CSV parse error:', err);
+          toast({
+            title: 'Gagal membaca file',
+            description: 'Format file tidak valid',
+            variant: 'destructive',
+          });
+        }
+      };
+      reader.readAsText(file);
+    }
     
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const processImportData = (lines: (string | undefined)[][]) => {
+    const errors: string[] = [];
+    const validItems: StockFormData[] = [];
+    
+    lines.forEach((row, idx) => {
+      // Skip empty rows or header rows
+      if (!row || row.length === 0) return;
+      
+      const secretData = String(row[0] || '').trim();
+      const expiresAt = row[1] ? String(row[1]).trim() : null;
+      
+      // Skip header row if detected
+      if (secretData.toLowerCase() === 'secret_data' || 
+          secretData.toLowerCase() === 'kode' || 
+          secretData.toLowerCase() === 'voucher' ||
+          secretData.toLowerCase() === 'data') {
+        return;
+      }
+      
+      if (!secretData) {
+        errors.push(`Baris ${idx + 1}: Data kosong`);
+        return;
+      }
+
+      validItems.push({
+        product_id: '',
+        secret_data: secretData,
+        expires_at: expiresAt,
+      });
+    });
+
+    if (validItems.length === 0) {
+      toast({
+        title: 'Tidak ada data',
+        description: 'File tidak berisi data yang valid',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setImportPreview(validItems);
+    setImportErrors(errors);
+    setImportDialogOpen(true);
   };
 
   const handleImportConfirm = async () => {
@@ -250,12 +303,28 @@ export default function AdminStock() {
   };
 
   const downloadTemplate = () => {
-    const content = `voucher-code-001\nvoucher-code-002,2024-12-31\nvoucher-code-003`;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    // Create Excel template
+    const templateData = [
+      ['secret_data', 'expires_at'],
+      ['voucher-code-001', ''],
+      ['voucher-code-002', '2024-12-31'],
+      ['voucher-code-003', ''],
+    ];
+    
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Template Stok');
+    
+    XLSX.writeFile(wb, 'template_stok.xlsx');
+  };
+
+  const downloadCSVTemplate = () => {
+    const content = `secret_data,expires_at\nvoucher-code-001,\nvoucher-code-002,2024-12-31\nvoucher-code-003,`;
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'template_stok.txt';
+    link.download = 'template_stok.csv';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -321,7 +390,7 @@ export default function AdminStock() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.txt"
+          accept=".csv,.txt,.xlsx,.xls"
           onChange={handleFileSelect}
           className="hidden"
         />
