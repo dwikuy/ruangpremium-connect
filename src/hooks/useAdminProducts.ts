@@ -36,6 +36,7 @@ export interface ProductFormData {
   is_active?: boolean;
   is_featured?: boolean;
   category_id?: string | null;
+  provider_id?: string | null;
   duration_days?: number | null;
   benefits?: Json;
   input_schema?: Json;
@@ -85,7 +86,7 @@ export function useAdminProducts() {
 export function useAdminProduct(productId: string) {
   return useQuery({
     queryKey: ['admin-product', productId],
-    queryFn: async (): Promise<AdminProduct | null> => {
+    queryFn: async (): Promise<AdminProduct & { provider_id?: string | null } | null> => {
       const { data, error } = await supabase
         .from('products')
         .select(`

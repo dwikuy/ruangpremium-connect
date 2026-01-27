@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useAdminProduct, useCreateProduct, useUpdateProduct, useCategories, ProductFormData } from '@/hooks/useAdminProducts';
+import { useAdminProviders } from '@/hooks/useAdminProviders';
 import type { Database } from '@/integrations/supabase/types';
 
 type ProductType = Database['public']['Enums']['product_type'];
@@ -28,6 +29,7 @@ export default function AdminProductEdit() {
 
   const { data: product, isLoading: productLoading } = useAdminProduct(productId || '');
   const { data: categories } = useCategories();
+  const { providers } = useAdminProviders();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
 
@@ -43,6 +45,7 @@ export default function AdminProductEdit() {
     is_active: true,
     is_featured: false,
     category_id: null,
+    provider_id: null,
     duration_days: null,
   });
 
@@ -60,6 +63,7 @@ export default function AdminProductEdit() {
         is_active: product.is_active ?? true,
         is_featured: product.is_featured ?? false,
         category_id: product.category_id,
+        provider_id: product.provider_id || null,
       });
     }
   }, [product, isNew]);
@@ -243,6 +247,32 @@ export default function AdminProductEdit() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Provider select - only show for INVITE products */}
+                {formData.product_type === 'INVITE' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="provider">Provider *</Label>
+                    <Select
+                      value={formData.provider_id || 'none'}
+                      onValueChange={(value) => setFormData({ ...formData, provider_id: value === 'none' ? null : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Tidak ada</SelectItem>
+                        {providers?.filter(p => p.is_active).map((provider) => (
+                          <SelectItem key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Provider digunakan untuk fulfillment otomatis produk INVITE
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="category">Kategori</Label>
