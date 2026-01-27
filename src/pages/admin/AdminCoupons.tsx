@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { useAdminCoupons, Coupon, CouponFormData } from '@/hooks/useAdminCoupons';
 import { Input } from '@/components/ui/input';
@@ -41,11 +41,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/format';
 import type { DiscountType } from '@/types/database';
+import { toast } from '@/hooks/use-toast';
 
 const defaultFormData: CouponFormData = {
   code: '',
@@ -69,19 +70,25 @@ export default function AdminCoupons() {
     updateCoupon, 
     deleteCoupon,
     toggleActive,
+    bulkImport,
     isCreating,
     isUpdating,
     isDeleting,
     isToggling,
+    isImporting,
   } = useAdminCoupons();
   
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [deletingCoupon, setDeletingCoupon] = useState<Coupon | null>(null);
   const [formData, setFormData] = useState<CouponFormData>(defaultFormData);
+  const [importPreview, setImportPreview] = useState<CouponFormData[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
 
   const filteredCoupons = coupons?.filter(coupon => {
     const matchesSearch = 
@@ -148,6 +155,177 @@ export default function AdminCoupons() {
     }
     setDeleteDialogOpen(false);
     setDeletingCoupon(null);
+  };
+
+  const parseCSV = (text: string): { data: string[][]; headers: string[] } => {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+    const data = lines.slice(1).map(line => {
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (const char of line) {
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim());
+      return values;
+    });
+    
+    return { headers, data };
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      toast({
+        title: 'Format tidak valid',
+        description: 'Harap upload file CSV',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const { headers, data } = parseCSV(text);
+        
+        const errors: string[] = [];
+        const validCoupons: CouponFormData[] = [];
+        
+        const codeIdx = headers.indexOf('kode');
+        const descIdx = headers.indexOf('deskripsi');
+        const typeIdx = headers.indexOf('tipe diskon');
+        const valueIdx = headers.indexOf('nilai diskon');
+        const minPurchaseIdx = headers.indexOf('min. pembelian');
+        const maxDiscountIdx = headers.indexOf('maks. diskon');
+        const usageLimitIdx = headers.indexOf('batas penggunaan');
+        const perUserIdx = headers.indexOf('per user');
+        const startsIdx = headers.indexOf('mulai berlaku');
+        const expiresIdx = headers.indexOf('berakhir');
+        const statusIdx = headers.indexOf('status');
+
+        if (codeIdx === -1 || valueIdx === -1) {
+          errors.push('Kolom "Kode" dan "Nilai Diskon" wajib ada');
+          setImportErrors(errors);
+          setImportDialogOpen(true);
+          return;
+        }
+
+        data.forEach((row, idx) => {
+          const code = row[codeIdx]?.trim();
+          const discountValue = parseFloat(row[valueIdx]) || 0;
+          
+          if (!code) {
+            errors.push(`Baris ${idx + 2}: Kode kupon kosong`);
+            return;
+          }
+          
+          if (discountValue <= 0) {
+            errors.push(`Baris ${idx + 2}: Nilai diskon harus lebih dari 0`);
+            return;
+          }
+
+          const typeRaw = row[typeIdx]?.toLowerCase() || '';
+          const discountType: DiscountType = typeRaw.includes('persentase') || typeRaw.includes('percentage') 
+            ? 'PERCENTAGE' 
+            : 'FIXED';
+
+          validCoupons.push({
+            code: code.toUpperCase(),
+            description: row[descIdx] || null,
+            discount_type: discountType,
+            discount_value: discountValue,
+            min_purchase: minPurchaseIdx >= 0 && row[minPurchaseIdx] ? parseFloat(row[minPurchaseIdx]) : null,
+            max_discount: maxDiscountIdx >= 0 && row[maxDiscountIdx] ? parseFloat(row[maxDiscountIdx]) : null,
+            usage_limit: usageLimitIdx >= 0 && row[usageLimitIdx] && row[usageLimitIdx] !== 'Tidak terbatas' 
+              ? parseInt(row[usageLimitIdx]) 
+              : null,
+            per_user_limit: perUserIdx >= 0 && row[perUserIdx] ? parseInt(row[perUserIdx]) : 1,
+            starts_at: startsIdx >= 0 && row[startsIdx] ? row[startsIdx] : null,
+            expires_at: expiresIdx >= 0 && row[expiresIdx] ? row[expiresIdx] : null,
+            is_active: statusIdx >= 0 ? row[statusIdx]?.toLowerCase() === 'aktif' : true,
+          });
+        });
+
+        setImportPreview(validCoupons);
+        setImportErrors(errors);
+        setImportDialogOpen(true);
+      } catch (err) {
+        console.error('CSV parse error:', err);
+        toast({
+          title: 'Gagal membaca file',
+          description: 'Format CSV tidak valid',
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    if (importPreview.length === 0) return;
+    
+    try {
+      await bulkImport(importPreview);
+      setImportDialogOpen(false);
+      setImportPreview([]);
+      setImportErrors([]);
+    } catch (error) {
+      console.error('Import failed:', error);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const headers = [
+      'Kode',
+      'Deskripsi',
+      'Tipe Diskon',
+      'Nilai Diskon',
+      'Min. Pembelian',
+      'Maks. Diskon',
+      'Batas Penggunaan',
+      'Per User',
+      'Mulai Berlaku',
+      'Berakhir',
+      'Status',
+    ];
+    
+    const exampleRows = [
+      ['DISKON10', 'Diskon 10%', 'Persentase', '10', '50000', '25000', '100', '1', '2024-01-01', '2024-12-31', 'Aktif'],
+      ['HEMAT50K', 'Potongan 50rb', 'Nominal', '50000', '200000', '', 'Tidak terbatas', '1', '', '', 'Aktif'],
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...exampleRows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'template_kupon.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const getCouponStatus = (coupon: Coupon) => {
@@ -250,6 +428,21 @@ export default function AdminCoupons() {
             <SelectItem value="inactive">Nonaktif</SelectItem>
           </SelectContent>
         </Select>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        <Button 
+          variant="outline" 
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isImporting}
+        >
+          <Upload className="h-4 w-4 mr-2" />
+          Import CSV
+        </Button>
         <Button 
           variant="outline" 
           onClick={handleExportCSV}
@@ -649,6 +842,110 @@ export default function AdminCoupons() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Import Kupon dari CSV
+            </DialogTitle>
+            <DialogDescription>
+              Preview data kupon yang akan diimport
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {importErrors.length > 0 && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                <p className="text-sm font-medium text-destructive mb-2">
+                  {importErrors.length} Error ditemukan:
+                </p>
+                <ul className="text-xs text-destructive space-y-1 max-h-24 overflow-y-auto">
+                  {importErrors.map((err, i) => (
+                    <li key={i}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {importPreview.length > 0 ? (
+              <>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-sm">
+                    <span className="font-semibold text-primary">{importPreview.length}</span> kupon siap diimport
+                  </p>
+                </div>
+                
+                <div className="border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Kode</TableHead>
+                        <TableHead>Tipe</TableHead>
+                        <TableHead>Nilai</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.slice(0, 10).map((coupon, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-mono text-sm">{coupon.code}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {coupon.discount_type === 'PERCENTAGE' ? '%' : 'Rp'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {coupon.discount_type === 'PERCENTAGE' 
+                              ? `${coupon.discount_value}%` 
+                              : formatCurrency(coupon.discount_value)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={coupon.is_active ? 'default' : 'secondary'}>
+                              {coupon.is_active ? 'Aktif' : 'Nonaktif'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {importPreview.length > 10 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            ...dan {importPreview.length - 10} kupon lainnya
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>Tidak ada data valid untuk diimport</p>
+              </div>
+            )}
+
+            <Button variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="h-4 w-4 mr-2" />
+              Download Template CSV
+            </Button>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button 
+              onClick={handleImportConfirm}
+              disabled={importPreview.length === 0 || isImporting}
+            >
+              {isImporting ? 'Mengimport...' : `Import ${importPreview.length} Kupon`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
