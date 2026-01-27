@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,7 +16,6 @@ import {
   Tag
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -36,10 +35,18 @@ const menuItems = [
 
 export function AdminLayout({ children, title, description }: AdminLayoutProps) {
   const location = useLocation();
-  const { user, loading, signOut, isAdmin } = useAuth();
+  const { user, loading, signOut, isAdmin, profile, refreshProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  if (loading) {
+  // Avoid premature redirect: useAuth sets `loading=false` before deferred profile fetch finishes.
+  // Ensure we have an up-to-date profile before evaluating `isAdmin`.
+  useEffect(() => {
+    if (user && !loading && !profile) {
+      refreshProfile();
+    }
+  }, [user, loading, profile, refreshProfile]);
+
+  if (loading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-background flex">
         <div className="w-64 bg-sidebar p-4">
@@ -130,7 +137,7 @@ export function AdminLayout({ children, title, description }: AdminLayoutProps) 
           <button
             onClick={() => signOut()}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors",
+              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors",
               !sidebarOpen && "justify-center"
             )}
           >
