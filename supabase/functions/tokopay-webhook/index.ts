@@ -152,6 +152,8 @@ serve(async (req) => {
 
     // If paid, trigger fulfillment job creation
     if (paymentStatus === "PAID") {
+      const order = payment.orders;
+      
       // Get order items and create fulfillment jobs
       const { data: orderItems } = await supabase
         .from("order_items")
@@ -166,6 +168,17 @@ serve(async (req) => {
             job_type: item.products?.product_type || "STOCK",
             status: "PENDING",
           });
+        }
+      }
+
+      // Process reseller cashback if this is a reseller order paid via QRIS (not wallet)
+      if (order?.reseller_id && order?.is_reseller_order) {
+        try {
+          await processResellerCashback(supabase, order, orderItems || []);
+          console.log(`Processed cashback for reseller order ${payment.order_id}`);
+        } catch (cashbackError) {
+          console.error("Failed to process reseller cashback:", cashbackError);
+          // Don't throw - cashback can be processed manually
         }
       }
 
@@ -233,4 +246,72 @@ async function generateSignature(trxId: string, refId: string, secret: string): 
   const hashBuffer = await crypto.subtle.digest("MD5", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Process reseller cashback when order is paid via QRIS
+async function processResellerCashback(
+  supabaseClient: any,
+  order: { reseller_id: string; id: string },
+  orderItems: Array<{ unit_price: number; quantity: number; products: { reseller_price: number | null } | null }>
+) {
+  // Calculate cashback based on difference between retail and reseller price
+  let totalCashback = 0;
+
+  for (const item of orderItems) {
+    const retailPrice = item.unit_price;
+    const resellerPrice = item.products?.reseller_price || retailPrice;
+    const margin = (retailPrice - resellerPrice) * item.quantity;
+    
+    if (margin > 0) {
+      totalCashback += margin;
+    }
+  }
+
+  if (totalCashback <= 0) {
+    console.log("No cashback to process - no margin or negative margin");
+    return;
+  }
+
+  // Get or create reseller wallet
+  const { data: wallet, error: walletError } = await supabaseClient
+    .from("reseller_wallets")
+    .select("*")
+    .eq("user_id", order.reseller_id)
+    .maybeSingle();
+
+  if (walletError) throw walletError;
+
+  const currentBalance = wallet?.balance || 0;
+  const newBalance = currentBalance + totalCashback;
+
+  if (wallet) {
+    // Update existing wallet
+    await supabaseClient
+      .from("reseller_wallets")
+      .update({
+        balance: newBalance,
+        total_cashback: (wallet.total_cashback || 0) + totalCashback,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", order.reseller_id);
+  } else {
+    // Create new wallet
+    await supabaseClient.from("reseller_wallets").insert({
+      user_id: order.reseller_id,
+      balance: totalCashback,
+      total_cashback: totalCashback,
+    });
+  }
+
+  // Record transaction
+  await supabaseClient.from("wallet_transactions").insert({
+    user_id: order.reseller_id,
+    amount: totalCashback,
+    balance_after: newBalance,
+    transaction_type: "CASHBACK",
+    order_id: order.id,
+    description: `Cashback order #${order.id.substring(0, 8)}`,
+  });
+
+  console.log(`Added cashback ${totalCashback} to reseller ${order.reseller_id}`);
 }
