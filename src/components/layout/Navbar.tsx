@@ -134,7 +134,7 @@ export function Navbar() {
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
-                        <Link to="/admin" className="cursor-pointer">
+                        <Link to="/admin" className="cursor-pointer text-primary font-medium">
                           <Settings className="mr-2 h-4 w-4" />
                           Admin Panel
                         </Link>
