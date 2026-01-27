@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import Forbidden from "./pages/Forbidden";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import Login from "./pages/Login";
@@ -17,6 +18,12 @@ import AccountOrders from "./pages/AccountOrders";
 import AccountOrderDetail from "./pages/AccountOrderDetail";
 import AccountPoints from "./pages/AccountPoints";
 import AccountSettings from "./pages/AccountSettings";
+// Reseller Pages
+import ResellerDashboard from "./pages/reseller/ResellerDashboard";
+import ResellerOrders from "./pages/reseller/ResellerOrders";
+import ResellerWallet from "./pages/reseller/ResellerWallet";
+import ResellerApiKeys from "./pages/reseller/ResellerApiKeys";
+import ResellerApiDocs from "./pages/reseller/ResellerApiDocs";
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminOrders from "./pages/admin/AdminOrders";
@@ -55,6 +62,13 @@ const App = () => (
           <Route path="/account/orders/:orderId" element={<AccountOrderDetail />} />
           <Route path="/account/points" element={<AccountPoints />} />
           <Route path="/account/settings" element={<AccountSettings />} />
+          {/* Reseller Panel Routes */}
+          <Route path="/reseller" element={<ResellerDashboard />} />
+          <Route path="/reseller/orders" element={<ResellerOrders />} />
+          <Route path="/reseller/wallet" element={<ResellerWallet />} />
+          <Route path="/reseller/api" element={<ResellerApiKeys />} />
+          <Route path="/reseller/docs" element={<ResellerApiDocs />} />
+          <Route path="/forbidden" element={<Forbidden />} />
           {/* Admin Panel Routes */}
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/orders" element={<AdminOrders />} />
