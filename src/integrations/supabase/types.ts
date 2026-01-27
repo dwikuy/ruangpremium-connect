@@ -624,6 +624,9 @@ export type Database = {
           name: string
           rate_limit: number | null
           user_id: string
+          webhook_enabled: boolean | null
+          webhook_secret: string | null
+          webhook_url: string | null
         }
         Insert: {
           created_at?: string
@@ -635,6 +638,9 @@ export type Database = {
           name: string
           rate_limit?: number | null
           user_id: string
+          webhook_enabled?: boolean | null
+          webhook_secret?: string | null
+          webhook_url?: string | null
         }
         Update: {
           created_at?: string
@@ -646,6 +652,9 @@ export type Database = {
           name?: string
           rate_limit?: number | null
           user_id?: string
+          webhook_enabled?: boolean | null
+          webhook_secret?: string | null
+          webhook_url?: string | null
         }
         Relationships: []
       }
@@ -842,6 +851,66 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_deliveries: {
+        Row: {
+          api_key_id: string
+          attempts: number | null
+          created_at: string
+          delivered_at: string | null
+          error: string | null
+          event_type: string
+          failed_at: string | null
+          id: string
+          order_id: string
+          payload: Json
+          response_body: string | null
+          response_status: number | null
+        }
+        Insert: {
+          api_key_id: string
+          attempts?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          event_type: string
+          failed_at?: string | null
+          id?: string
+          order_id: string
+          payload: Json
+          response_body?: string | null
+          response_status?: number | null
+        }
+        Update: {
+          api_key_id?: string
+          attempts?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          event_type?: string
+          failed_at?: string | null
+          id?: string
+          order_id?: string
+          payload?: Json
+          response_body?: string | null
+          response_status?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "reseller_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_deliveries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
