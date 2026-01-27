@@ -24,6 +24,7 @@ import ResellerOrders from "./pages/reseller/ResellerOrders";
 import ResellerWallet from "./pages/reseller/ResellerWallet";
 import ResellerApiKeys from "./pages/reseller/ResellerApiKeys";
 import ResellerApiDocs from "./pages/reseller/ResellerApiDocs";
+import ResellerCheckout from "./pages/reseller/ResellerCheckout";
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminOrders from "./pages/admin/AdminOrders";
@@ -69,6 +70,7 @@ const App = () => (
           <Route path="/reseller/wallet" element={<ResellerWallet />} />
           <Route path="/reseller/api" element={<ResellerApiKeys />} />
           <Route path="/reseller/docs" element={<ResellerApiDocs />} />
+          <Route path="/reseller/checkout/:productId" element={<ResellerCheckout />} />
           <Route path="/forbidden" element={<Forbidden />} />
           {/* Admin Panel Routes */}
           <Route path="/admin" element={<AdminDashboard />} />

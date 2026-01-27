@@ -88,6 +88,39 @@ export function useResellerOrders() {
   });
 }
 
+// Reseller wallet balance
+export function useResellerWallet() {
+  const { user } = useAuth();
+  
+  return useQuery({
+    queryKey: ['reseller-wallet', user?.id],
+    queryFn: async () => {
+      if (!user) throw new Error('Not authenticated');
+      
+      const { data, error } = await supabase
+        .from('reseller_wallets')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (error) throw error;
+      
+      // Return default wallet if not exists
+      if (!data) {
+        return {
+          balance: 0,
+          total_topup: 0,
+          total_spent: 0,
+          total_cashback: 0,
+        };
+      }
+      
+      return data;
+    },
+    enabled: !!user,
+  });
+}
+
 // Wallet transactions
 export function useWalletTransactions() {
   const { user } = useAuth();
