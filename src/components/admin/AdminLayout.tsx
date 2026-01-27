@@ -37,16 +37,25 @@ export function AdminLayout({ children, title, description }: AdminLayoutProps) 
   const location = useLocation();
   const { user, loading, signOut, isAdmin, profile, refreshProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [checkingRole, setCheckingRole] = useState(true);
 
   // Avoid premature redirect: useAuth sets `loading=false` before deferred profile fetch finishes.
   // Ensure we have an up-to-date profile before evaluating `isAdmin`.
+  // Force a role refresh once when entering Admin routes to avoid stale in-memory role.
   useEffect(() => {
-    if (user && !loading && !profile) {
-      refreshProfile();
-    }
-  }, [user, loading, profile, refreshProfile]);
+    let alive = true;
+    (async () => {
+      if (user && !loading) {
+        await refreshProfile();
+      }
+      if (alive) setCheckingRole(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user, loading, refreshProfile]);
 
-  if (loading || (user && !profile)) {
+  if (loading || checkingRole || (user && !profile)) {
     return (
       <div className="min-h-screen bg-background flex">
         <div className="w-64 bg-sidebar p-4">

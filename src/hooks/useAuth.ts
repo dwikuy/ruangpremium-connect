@@ -205,8 +205,8 @@ export function useAuth() {
   const isReseller = profile?.role === 'reseller';
   const isMember = profile?.role === 'member';
 
-  const refreshProfile = useCallback(() => {
-    if (user) fetchProfile(user.id);
+  const refreshProfile = useCallback(async () => {
+    if (user) await fetchProfile(user.id);
   }, [user, fetchProfile]);
 
   return {
