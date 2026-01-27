@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,21 +86,23 @@ serve(async (req) => {
     const refId = `RP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const amount = Math.ceil(order.total_amount);
 
-    // Generate Tokopay signature
+    // Generate Tokopay signature using MD5
     const signatureString = `${tokopayMerchantId}:${tokopaySecret}:${refId}`;
+    
+    // Use crypto.subtle with MD5 from older deno std
     const encoder = new TextEncoder();
     const data = encoder.encode(signatureString);
     const hashBuffer = await crypto.subtle.digest("MD5", data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const signature = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 
-    // Call Tokopay API to create QRIS payment
+    // Call Tokopay API to create QRIS payment (Simple Order GET)
     const tokopayUrl = new URL("https://api.tokopay.id/v1/order");
     tokopayUrl.searchParams.set("merchant", tokopayMerchantId);
     tokopayUrl.searchParams.set("secret", tokopaySecret);
     tokopayUrl.searchParams.set("ref_id", refId);
     tokopayUrl.searchParams.set("nominal", amount.toString());
-    tokopayUrl.searchParams.set("kode_channel", "QRISC"); // QRIS channel
+    tokopayUrl.searchParams.set("metode", "QRIS"); // Simple Order uses "metode"
 
     console.log("Calling Tokopay API:", tokopayUrl.toString().replace(tokopaySecret, "***"));
 
