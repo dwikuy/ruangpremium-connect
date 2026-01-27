@@ -66,33 +66,53 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          // Defer profile fetch to avoid blocking
-          setTimeout(() => fetchProfile(session.user.id), 0);
+          // Fetch profile and wait for it before setting loading to false
+          await fetchProfile(session.user.id);
         } else {
           setProfile(null);
         }
-        setLoading(false);
+        
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!isMounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
+      
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       }
-      setLoading(false);
-    });
+      
+      if (isMounted) {
+        setLoading(false);
+      }
+    };
 
-    return () => subscription.unsubscribe();
+    initSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [fetchProfile]);
 
   const signUp = async (email: string, password: string, name: string) => {
