@@ -21,6 +21,7 @@ import AccountSettings from "./pages/AccountSettings";
 // Reseller Pages
 import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerOrders from "./pages/reseller/ResellerOrders";
+import ResellerProducts from "./pages/reseller/ResellerProducts";
 import ResellerWallet from "./pages/reseller/ResellerWallet";
 import ResellerApiKeys from "./pages/reseller/ResellerApiKeys";
 import ResellerApiDocs from "./pages/reseller/ResellerApiDocs";
@@ -67,6 +68,7 @@ const App = () => (
           {/* Reseller Panel Routes */}
           <Route path="/reseller" element={<ResellerDashboard />} />
           <Route path="/reseller/orders" element={<ResellerOrders />} />
+          <Route path="/reseller/products" element={<ResellerProducts />} />
           <Route path="/reseller/wallet" element={<ResellerWallet />} />
           <Route path="/reseller/api" element={<ResellerApiKeys />} />
           <Route path="/reseller/docs" element={<ResellerApiDocs />} />

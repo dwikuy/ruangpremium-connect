@@ -24,6 +24,7 @@ interface ResellerLayoutProps {
 
 const menuItems = [
   { href: '/reseller', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/reseller/products', label: 'Produk', icon: Store },
   { href: '/reseller/orders', label: 'Pesanan', icon: ShoppingBag },
   { href: '/reseller/wallet', label: 'Wallet', icon: Wallet },
   { href: '/reseller/api', label: 'API Keys', icon: Key },
