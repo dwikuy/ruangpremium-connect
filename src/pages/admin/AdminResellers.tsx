@@ -39,13 +39,15 @@ import {
   TrendingUp,
   ShoppingBag,
   Users,
-  ArrowUpDown,
-  Eye,
   UserMinus,
   Plus,
-  Settings,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  RefreshCw,
+  Webhook,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/format';
 import {
@@ -57,6 +59,8 @@ import {
   useResellerApiKeys,
   useUpdateApiKeyRateLimit,
   useToggleApiKeyStatus,
+  useWebhookDeliveries,
+  useRetryWebhook,
   type ResellerData,
 } from '@/hooks/useAdminResellers';
 
@@ -72,16 +76,19 @@ export default function AdminResellers() {
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
   const [editingRateLimit, setEditingRateLimit] = useState<{ keyId: string; value: string } | null>(null);
+  const [webhookFilter, setWebhookFilter] = useState<'all' | 'success' | 'failed'>('all');
 
   const { data: resellers, isLoading: loadingResellers } = useResellers();
   const { data: members, isLoading: loadingMembers } = useMembers();
   const { data: apiKeys, isLoading: loadingApiKeys } = useResellerApiKeys(selectedReseller?.user_id);
+  const { data: webhookDeliveries, isLoading: loadingWebhooks, refetch: refetchWebhooks } = useWebhookDeliveries({ status: webhookFilter });
 
   const upgradeToReseller = useUpgradeToReseller();
   const downgradeToMember = useDowngradeToMember();
   const addBalance = useAddResellerBalance();
   const updateRateLimit = useUpdateApiKeyRateLimit();
   const toggleApiKeyStatus = useToggleApiKeyStatus();
+  const retryWebhook = useRetryWebhook();
 
   // Filter resellers
   const filteredResellers = resellers?.filter(r =>
@@ -99,6 +106,7 @@ export default function AdminResellers() {
   const totalBalance = resellers?.reduce((sum, r) => sum + r.wallet_balance, 0) || 0;
   const totalRevenue = resellers?.reduce((sum, r) => sum + r.total_revenue, 0) || 0;
   const totalOrders = resellers?.reduce((sum, r) => sum + r.total_orders, 0) || 0;
+  const failedWebhooks = webhookDeliveries?.filter(d => !d.delivered_at).length || 0;
 
   const handleUpgrade = () => {
     if (!selectedMemberId) return;
@@ -196,6 +204,14 @@ export default function AdminResellers() {
           <TabsList>
             <TabsTrigger value="resellers">Daftar Reseller</TabsTrigger>
             <TabsTrigger value="upgrade">Upgrade Member</TabsTrigger>
+            <TabsTrigger value="webhooks" className="flex items-center gap-2">
+              Webhook Log
+              {failedWebhooks > 0 && (
+                <Badge variant="destructive" className="h-5 px-1.5 text-xs">
+                  {failedWebhooks}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -374,6 +390,140 @@ export default function AdminResellers() {
                               <UserPlus className="mr-2 h-4 w-4" />
                               Upgrade
                             </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Webhook Logs */}
+        <TabsContent value="webhooks">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Webhook className="h-5 w-5" />
+                    Webhook Delivery Log
+                  </CardTitle>
+                  <CardDescription>Monitor dan retry webhook yang gagal terkirim</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                    value={webhookFilter}
+                    onChange={(e) => setWebhookFilter(e.target.value as 'all' | 'success' | 'failed')}
+                  >
+                    <option value="all">Semua</option>
+                    <option value="success">Berhasil</option>
+                    <option value="failed">Gagal</option>
+                  </select>
+                  <Button variant="outline" size="sm" onClick={() => refetchWebhooks()}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingWebhooks ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : !webhookDeliveries || webhookDeliveries.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Belum ada log webhook
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Event</TableHead>
+                        <TableHead>Order</TableHead>
+                        <TableHead>Reseller</TableHead>
+                        <TableHead>Response</TableHead>
+                        <TableHead>Waktu</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {webhookDeliveries.map((delivery) => (
+                        <TableRow key={delivery.id}>
+                          <TableCell>
+                            {delivery.delivered_at ? (
+                              <Badge variant="outline" className="text-success border-success/30">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Terkirim
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Gagal
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <code className="text-xs bg-muted px-2 py-1 rounded">
+                              {delivery.event_type}
+                            </code>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="text-sm font-medium">
+                                #{delivery.order_id?.substring(0, 8)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {(delivery.order as any)?.customer_name || '-'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm">
+                              {(delivery.api_key as any)?.name || '-'}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            {delivery.response_status ? (
+                              <Badge variant={delivery.response_status >= 200 && delivery.response_status < 300 ? 'outline' : 'secondary'}>
+                                HTTP {delivery.response_status}
+                              </Badge>
+                            ) : delivery.error ? (
+                              <span className="text-xs text-destructive truncate max-w-[150px] block">
+                                {delivery.error}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDate(delivery.created_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {!delivery.delivered_at && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => retryWebhook.mutate(delivery.id)}
+                                disabled={retryWebhook.isPending}
+                              >
+                                {retryWebhook.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 mr-1" />
+                                    Retry
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
