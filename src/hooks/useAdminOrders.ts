@@ -245,15 +245,16 @@ export function useUpdateOrderStatus() {
               throw new Error('Gagal membuat fulfillment job');
             }
 
-            // Trigger fulfillment processing
-            try {
-              await supabase.functions.invoke('trigger-fulfillment', {
-                body: { order_id: orderId },
-              });
-            } catch (triggerError) {
-              console.error('Failed to trigger fulfillment:', triggerError);
-              // Don't throw - jobs are created, they can be processed later
-            }
+          }
+
+          // Also trigger even when no new jobs were inserted (jobs may already exist but still pending)
+          try {
+            await supabase.functions.invoke('trigger-fulfillment', {
+              body: { order_id: orderId },
+            });
+          } catch (triggerError) {
+            console.error('Failed to trigger fulfillment:', triggerError);
+            // Don't throw - existing jobs can be processed later
           }
         }
       }
