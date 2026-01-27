@@ -113,6 +113,25 @@ export default function Track() {
     }
   }, [orderId, guestToken]);
 
+  // Poll status so user doesn't get stuck seeing "Dibayar" while fulfillment is still running
+  useEffect(() => {
+    if (!orderId) return;
+
+    const isTerminal = (status?: string | null) =>
+      status === 'DELIVERED' || status === 'FAILED' || status === 'CANCELLED';
+
+    // If we don't have data yet, wait for initial fetch
+    if (!order || isTerminal(order.status)) return;
+
+    const interval = setInterval(() => {
+      // Keep updating until terminal
+      fetchOrder(orderId, guestToken);
+    }, 5000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, guestToken, order?.status]);
+
   const handleSearch = () => {
     if (searchInput.trim()) {
       fetchOrder(searchInput.trim());
@@ -133,17 +152,17 @@ export default function Track() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'DELIVERED':
-        return 'bg-green-500';
+        return 'bg-success text-success-foreground';
       case 'PROCESSING':
       case 'PAID':
-        return 'bg-blue-500';
+        return 'bg-primary text-primary-foreground';
       case 'AWAITING_PAYMENT':
-        return 'bg-yellow-500';
+        return 'bg-accent text-accent-foreground';
       case 'CANCELLED':
       case 'FAILED':
-        return 'bg-destructive';
+        return 'bg-destructive text-destructive-foreground';
       default:
-        return 'bg-muted';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
