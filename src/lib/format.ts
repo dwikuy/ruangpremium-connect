@@ -12,6 +12,9 @@ export function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
+// Alias for formatRupiah
+export const formatCurrency = formatRupiah;
+
 /**
  * Format number with thousand separator
  */
