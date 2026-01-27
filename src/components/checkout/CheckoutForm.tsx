@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,8 +23,10 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Tag, Check, X, AlertCircle } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Loader2, Tag, Check, X, AlertCircle, Coins, Gift } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
+import { usePointsSettings, useUserPointsBalance, calculateMaxRedeemable, calculatePointsEarned } from '@/hooks/usePoints';
 import type { ProductWithCategory, UserProfile, CouponValidation } from '@/types/database';
 
 // Base form schema
@@ -37,12 +39,21 @@ const baseSchema = z.object({
   points_to_use: z.number().min(0).optional(),
 });
 
+interface PointsValidation {
+  valid: boolean;
+  error?: string;
+  max_redeemable?: number;
+  discount_amount?: number;
+}
+
 interface CheckoutFormProps {
   product: ProductWithCategory;
   profile: UserProfile | null;
   couponValidation: CouponValidation | null;
+  pointsValidation?: PointsValidation | null;
   loading: boolean;
   onValidateCoupon: (code: string, subtotal: number) => void;
+  onValidatePoints?: (userId: string, points: number, subtotal: number) => void;
   onSubmit: (data: {
     customer_name: string;
     customer_email: string;
@@ -58,13 +69,18 @@ export function CheckoutForm({
   product,
   profile,
   couponValidation,
+  pointsValidation,
   loading,
   onValidateCoupon,
+  onValidatePoints,
   onSubmit,
 }: CheckoutFormProps) {
   const [inputData, setInputData] = useState<Record<string, string>>({});
-  const [quantity, setQuantity] = useState(1);
   const [couponCode, setCouponCode] = useState('');
+  
+  // Fetch points settings and user balance
+  const { data: pointsSettings } = usePointsSettings();
+  const { data: userPoints } = useUserPointsBalance(profile?.user_id);
 
   // Create dynamic schema based on input_schema
   const dynamicFields = product.input_schema || [];
@@ -77,9 +93,7 @@ export function CheckoutForm({
     return acc;
   }, {} as Record<string, z.ZodType>);
 
-  const formSchema = baseSchema.extend(dynamicSchema);
-
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<z.infer<typeof baseSchema>>({
     resolver: zodResolver(baseSchema),
     defaultValues: {
       customer_name: profile?.name || '',
@@ -101,9 +115,24 @@ export function CheckoutForm({
   }, [profile, form]);
 
   const watchedQuantity = form.watch('quantity');
+  const watchedPoints = form.watch('points_to_use') || 0;
   const subtotal = product.retail_price * (watchedQuantity || 1);
   const discount = couponValidation?.calculated_discount || 0;
-  const pointsDiscount = form.watch('points_to_use') || 0;
+  
+  // Calculate max redeemable points
+  const maxRedeemable = useMemo(() => {
+    if (!profile?.user_id || !pointsSettings || !userPoints) return 0;
+    return calculateMaxRedeemable(subtotal, userPoints.balance, pointsSettings);
+  }, [profile?.user_id, pointsSettings, userPoints, subtotal]);
+  
+  // Calculate points to be earned from this order
+  const pointsToEarn = useMemo(() => {
+    if (!pointsSettings) return 0;
+    const afterDiscount = Math.max(0, subtotal - discount - watchedPoints);
+    return calculatePointsEarned(afterDiscount, pointsSettings);
+  }, [pointsSettings, subtotal, discount, watchedPoints]);
+
+  const pointsDiscount = Math.min(watchedPoints, maxRedeemable);
   const total = Math.max(0, subtotal - discount - pointsDiscount);
 
   const handleCouponApply = () => {
@@ -112,7 +141,17 @@ export function CheckoutForm({
     }
   };
 
-  const handleFormSubmit = (values: z.infer<typeof formSchema>) => {
+  const handlePointsChange = (value: number[]) => {
+    const points = value[0] || 0;
+    form.setValue('points_to_use', points);
+    
+    // Validate points on change
+    if (profile?.user_id && onValidatePoints && points > 0) {
+      onValidatePoints(profile.user_id, points, subtotal);
+    }
+  };
+
+  const handleFormSubmit = (values: z.infer<typeof baseSchema>) => {
     // Collect dynamic field values
     const collectedInputData: Record<string, string> = {};
     dynamicFields.forEach(field => {
@@ -125,7 +164,7 @@ export function CheckoutForm({
       customer_phone: values.customer_phone,
       quantity: watchedQuantity,
       coupon_code: couponValidation?.valid ? couponCode : undefined,
-      points_to_use: values.points_to_use,
+      points_to_use: pointsDiscount > 0 ? pointsDiscount : undefined,
       input_data: collectedInputData,
     });
   };
@@ -304,7 +343,7 @@ export function CheckoutForm({
             </div>
             
             {couponValidation && (
-              <div className={`flex items-center gap-2 text-sm ${couponValidation.valid ? 'text-green-500' : 'text-destructive'}`}>
+              <div className={`flex items-center gap-2 text-sm ${couponValidation.valid ? 'text-success' : 'text-destructive'}`}>
                 {couponValidation.valid ? (
                   <Check className="h-4 w-4" />
                 ) : (
@@ -316,39 +355,77 @@ export function CheckoutForm({
           </CardContent>
         </Card>
 
-        {/* Points (if logged in) */}
-        {profile && profile.points_balance > 0 && (
-          <Card className="glass-card">
+        {/* Points (if logged in and has points or can earn) */}
+        {profile && userPoints && (userPoints.balance > 0 || pointsToEarn > 0) && (
+          <Card className="glass-card border-primary/20">
             <CardHeader>
-              <CardTitle className="text-lg">Tukar Poin</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Coins className="h-4 w-4 text-primary" />
+                Poin Rewards
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-muted-foreground">Poin tersedia</span>
-                <Badge variant="secondary">{profile.points_balance.toLocaleString('id-ID')} poin</Badge>
+            <CardContent className="space-y-4">
+              {/* Points balance display */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Saldo Poin</span>
+                </div>
+                <Badge variant="secondary" className="text-base">
+                  {userPoints.balance.toLocaleString('id-ID')} poin
+                </Badge>
               </div>
-              <FormField
-                control={form.control}
-                name="points_to_use"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={Math.min(profile.points_balance, subtotal)}
-                        placeholder="Masukkan jumlah poin"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                1 poin = Rp 1 (maksimal {Math.min(profile.points_balance, subtotal).toLocaleString('id-ID')} poin)
-              </p>
+              
+              {/* Redeem section */}
+              {userPoints.balance > 0 && maxRedeemable > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Tukar Poin</Label>
+                    <span className="text-sm font-medium text-primary">
+                      -{formatCurrency(pointsDiscount)}
+                    </span>
+                  </div>
+                  
+                  <Slider
+                    value={[watchedPoints]}
+                    onValueChange={handlePointsChange}
+                    max={maxRedeemable}
+                    step={100}
+                    className="w-full"
+                  />
+                  
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>0 poin</span>
+                    <span className="font-medium text-foreground">
+                      {watchedPoints.toLocaleString('id-ID')} poin
+                    </span>
+                    <span>{maxRedeemable.toLocaleString('id-ID')} poin</span>
+                  </div>
+                  
+                  {pointsValidation && !pointsValidation.valid && (
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <X className="h-4 w-4" />
+                      {pointsValidation.error}
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground">
+                    1 poin = Rp 1 • Maks. {pointsSettings?.maxRedeemPercent || 30}% dari subtotal
+                  </p>
+                </div>
+              )}
+              
+              {/* Points to earn preview */}
+              {pointsToEarn > 0 && (
+                <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="flex items-center gap-2">
+                    <Gift className="h-4 w-4 text-primary" />
+                    <span className="text-sm">Poin yang akan didapat</span>
+                  </div>
+                  <Badge className="bg-primary text-primary-foreground">
+                    +{pointsToEarn.toLocaleString('id-ID')} poin
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -365,15 +442,15 @@ export function CheckoutForm({
             </div>
             
             {discount > 0 && (
-              <div className="flex justify-between text-green-500">
+              <div className="flex justify-between text-success">
                 <span>Diskon Kupon</span>
                 <span>-{formatCurrency(discount)}</span>
               </div>
             )}
             
             {pointsDiscount > 0 && (
-              <div className="flex justify-between text-green-500">
-                <span>Diskon Poin</span>
+              <div className="flex justify-between text-success">
+                <span>Diskon Poin ({pointsDiscount.toLocaleString('id-ID')} poin)</span>
                 <span>-{formatCurrency(pointsDiscount)}</span>
               </div>
             )}
@@ -384,6 +461,14 @@ export function CheckoutForm({
               <span>Total</span>
               <span className="text-gold">{formatCurrency(total)}</span>
             </div>
+            
+            {/* Points earned note */}
+            {profile && pointsToEarn > 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
+                <Gift className="h-3 w-3" />
+                <span>Anda akan mendapat +{pointsToEarn.toLocaleString('id-ID')} poin setelah order selesai</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 

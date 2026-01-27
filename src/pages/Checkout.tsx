@@ -15,7 +15,7 @@ export default function Checkout() {
   const { productId } = useParams<{ productId: string }>();
   const { data: product, isLoading: productLoading, error: productError } = useProduct(productId || '');
   const { profile, loading: authLoading } = useAuth();
-  const { loading, couponValidation, validateCoupon, createOrder } = useCheckout(product || null);
+  const { loading, couponValidation, pointsValidation, validateCoupon, validatePoints, createOrder } = useCheckout(product || null);
 
   if (!productId) {
     return <Navigate to="/products" replace />;
@@ -98,8 +98,10 @@ export default function Checkout() {
               product={product}
               profile={profile}
               couponValidation={couponValidation}
+              pointsValidation={pointsValidation}
               loading={loading}
               onValidateCoupon={validateCoupon}
+              onValidatePoints={validatePoints}
               onSubmit={handleSubmit}
             />
           </div>
