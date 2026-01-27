@@ -41,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/format';
@@ -173,6 +173,57 @@ export default function AdminCoupons() {
     return formatCurrency(coupon.discount_value);
   };
 
+  const handleExportCSV = () => {
+    if (!filteredCoupons || filteredCoupons.length === 0) return;
+
+    const headers = [
+      'Kode',
+      'Deskripsi',
+      'Tipe Diskon',
+      'Nilai Diskon',
+      'Min. Pembelian',
+      'Maks. Diskon',
+      'Batas Penggunaan',
+      'Per User',
+      'Penggunaan',
+      'Mulai Berlaku',
+      'Berakhir',
+      'Status',
+      'Dibuat',
+    ];
+
+    const rows = filteredCoupons.map(coupon => [
+      coupon.code,
+      coupon.description || '',
+      coupon.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal',
+      coupon.discount_value,
+      coupon.min_purchase || '',
+      coupon.max_discount || '',
+      coupon.usage_limit || 'Tidak terbatas',
+      coupon.per_user_limit || 1,
+      coupon.usage_count || 0,
+      coupon.starts_at ? format(new Date(coupon.starts_at), 'yyyy-MM-dd') : '',
+      coupon.expires_at ? format(new Date(coupon.expires_at), 'yyyy-MM-dd') : '',
+      coupon.is_active ? 'Aktif' : 'Nonaktif',
+      format(new Date(coupon.created_at), 'yyyy-MM-dd HH:mm'),
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kupon_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <AdminLayout 
       title="Manajemen Kupon" 
@@ -199,6 +250,14 @@ export default function AdminCoupons() {
             <SelectItem value="inactive">Nonaktif</SelectItem>
           </SelectContent>
         </Select>
+        <Button 
+          variant="outline" 
+          onClick={handleExportCSV}
+          disabled={!filteredCoupons || filteredCoupons.length === 0}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
         <Button onClick={handleOpenCreate}>
           <Plus className="h-4 w-4 mr-2" />
           Tambah Kupon
