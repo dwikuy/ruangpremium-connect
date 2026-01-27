@@ -113,11 +113,33 @@ export function useCreateProduct() {
 
   return useMutation({
     mutationFn: async (data: ProductFormData) => {
+      // Clean the data to only include valid fields
+      const cleanData = {
+        name: data.name,
+        slug: data.slug,
+        description: data.description || null,
+        short_description: data.short_description || null,
+        image_url: data.image_url || null,
+        retail_price: data.retail_price,
+        reseller_price: data.reseller_price || null,
+        product_type: data.product_type,
+        is_active: data.is_active ?? true,
+        is_featured: data.is_featured ?? false,
+        category_id: data.category_id || null,
+        provider_id: data.provider_id || null,
+        duration_days: data.duration_days || null,
+        benefits: data.benefits || null,
+        input_schema: data.input_schema || null,
+      };
+
       const { error } = await supabase
         .from('products')
-        .insert(data);
+        .insert(cleanData);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Create product error:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
@@ -126,10 +148,11 @@ export function useCreateProduct() {
         description: 'Produk berhasil ditambahkan',
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error('Create product mutation error:', error);
       toast({
         title: 'Gagal',
-        description: error instanceof Error ? error.message : 'Gagal menambahkan produk',
+        description: error.message || 'Gagal menambahkan produk',
         variant: 'destructive',
       });
     },
@@ -173,12 +196,36 @@ export function useDeleteProduct() {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // First check if product has related stock items or order items
+      const { data: stockItems } = await supabase
+        .from('stock_items')
+        .select('id')
+        .eq('product_id', id)
+        .limit(1);
+
+      if (stockItems && stockItems.length > 0) {
+        throw new Error('Tidak dapat menghapus produk yang memiliki stok. Hapus stok terlebih dahulu.');
+      }
+
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('id')
+        .eq('product_id', id)
+        .limit(1);
+
+      if (orderItems && orderItems.length > 0) {
+        throw new Error('Tidak dapat menghapus produk yang memiliki riwayat pesanan.');
+      }
+
       const { error } = await supabase
         .from('products')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete product error:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
@@ -187,10 +234,11 @@ export function useDeleteProduct() {
         description: 'Produk berhasil dihapus',
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error('Delete product mutation error:', error);
       toast({
         title: 'Gagal',
-        description: error instanceof Error ? error.message : 'Gagal menghapus produk',
+        description: error.message || 'Gagal menghapus produk',
         variant: 'destructive',
       });
     },
