@@ -387,23 +387,91 @@ async function sendChatGPTInvite(
   account: ProviderAccount,
   inputData: Record<string, string>
 ): Promise<Record<string, unknown>> {
-  // ChatGPT Team invite via API (placeholder - would use actual ChatGPT API)
   const targetEmail = inputData.email || inputData.target_email;
   
   if (!targetEmail) {
     throw new Error("Target email is required for ChatGPT invite");
   }
 
-  // In production, this would call ChatGPT Team API
-  // For now, simulate successful invite
-  console.log(`Sending ChatGPT Team invite to ${targetEmail}`);
+  // Get credentials from provider account
+  const creds = account.credentials;
+  const accountId = creds.account_id;
+  const token = creds.token;
+  const cookies = creds.cookies;
+  const deviceId = creds.device_id;
+  const clientVersion = creds.client_version;
+  const buildNumber = creds.build_number;
+
+  if (!accountId || !token) {
+    throw new Error("Missing required credentials (account_id, token)");
+  }
+
+  const url = `https://chatgpt.com/backend-api/accounts/${accountId}/invites`;
+
+  const headers: Record<string, string> = {
+    "accept": "*/*",
+    "accept-language": "en-US,en;q=0.8",
+    "authorization": `Bearer ${token}`,
+    "chatgpt-account-id": accountId,
+    "content-type": "application/json",
+    "origin": "https://chatgpt.com",
+    "referer": "https://chatgpt.com/",
+    "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Brave";v="144"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+  };
+
+  // Add optional headers if provided
+  if (deviceId) headers["oai-device-id"] = deviceId;
+  if (clientVersion) headers["oai-client-version"] = clientVersion;
+  if (buildNumber) headers["oai-client-build-number"] = buildNumber;
+  if (cookies) headers["cookie"] = cookies;
+
+  const payload = {
+    email_addresses: [targetEmail],
+    role: "standard-user",
+    resend_emails: true,
+  };
+
+  console.log(`Sending ChatGPT Team invite to ${targetEmail} via account ${account.name}`);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`ChatGPT invite failed: ${response.status}`, errorText.substring(0, 200));
+    
+    if (response.status === 401) {
+      throw new Error("Token expired or invalid. Please update credentials.");
+    } else if (response.status === 403) {
+      throw new Error("Access forbidden. Check cookies or account permissions.");
+    } else if (response.status === 429) {
+      throw new Error("Rate limited. Try again later.");
+    }
+    
+    throw new Error(`ChatGPT API error: ${response.status}`);
+  }
+
+  const data = await response.json();
   
+  console.log(`ChatGPT invite successful for ${targetEmail}`);
+
   return {
     type: "CHATGPT_TEAM",
     target_email: targetEmail,
     status: "INVITED",
-    message: "Invite sent successfully",
+    invite_id: data.account_invites?.[0]?.id || null,
+    message: "Invite sent successfully via ChatGPT API",
     sent_at: new Date().toISOString(),
+    raw_response: data,
   };
 }
 
