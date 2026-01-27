@@ -42,30 +42,41 @@ export function AdminLayout({ children, title, description }: AdminLayoutProps) 
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    // Prevent redirect race: only stop "checkingRole" after role query completes.
+    if (loading) return;
+
+    // Not logged in → no need to check role.
+    if (!user) {
+      setIsAdmin(false);
+      setCheckingRole(false);
+      return;
+    }
+
     let alive = true;
+    setCheckingRole(true);
+
     (async () => {
-      if (user && !loading) {
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-        if (!alive) return;
+      if (!alive) return;
 
-        if (error) {
-          console.error('Admin role check failed:', error);
-          setIsAdmin(false);
-        } else {
-          setIsAdmin(data?.role === 'admin');
-        }
+      if (error) {
+        console.error('Admin role check failed:', error);
+        setIsAdmin(false);
+      } else {
+        setIsAdmin(data?.role === 'admin');
       }
-      if (alive) setCheckingRole(false);
+      setCheckingRole(false);
     })();
+
     return () => {
       alive = false;
     };
-  }, [user, loading]);
+  }, [user?.id, loading]);
 
   if (loading || checkingRole) {
     return (
