@@ -114,6 +114,42 @@ export function useProduct(slug: string) {
   });
 }
 
+// Fetch single product by ID
+export function useProductById(id: string) {
+  return useQuery({
+    queryKey: ['product-by-id', id],
+    queryFn: async (): Promise<ProductWithCategory | null> => {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          category:product_categories(id, name, slug, icon),
+          provider:providers(id, name, slug)
+        `)
+        .eq('id', id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return null;
+
+      // Get stock count for STOCK products
+      let stock_count = 0;
+      if (data.product_type === 'STOCK') {
+        const { count } = await supabase
+          .from('stock_items')
+          .select('*', { count: 'exact', head: true })
+          .eq('product_id', data.id)
+          .eq('status', 'AVAILABLE');
+        stock_count = count || 0;
+      }
+
+      return transformProduct({ ...data, stock_count });
+    },
+    enabled: !!id,
+  });
+}
+
 // Fetch featured products
 export function useFeaturedProducts() {
   return useQuery({
