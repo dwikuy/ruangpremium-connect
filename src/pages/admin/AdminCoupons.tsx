@@ -41,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download, Upload, FileSpreadsheet, Shuffle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download, Upload, FileSpreadsheet, Shuffle, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/format';
@@ -81,6 +81,7 @@ export default function AdminCoupons() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [validityFilter, setValidityFilter] = useState<'all' | 'valid' | 'expired' | 'scheduled'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -99,8 +100,19 @@ export default function AdminCoupons() {
       statusFilter === 'all' || 
       (statusFilter === 'active' && coupon.is_active) ||
       (statusFilter === 'inactive' && !coupon.is_active);
+
+    const now = new Date();
+    const isExpired = coupon.expires_at && new Date(coupon.expires_at) < now;
+    const isScheduled = coupon.starts_at && new Date(coupon.starts_at) > now;
+    const isValid = !isExpired && !isScheduled;
+
+    const matchesValidity = 
+      validityFilter === 'all' ||
+      (validityFilter === 'valid' && isValid) ||
+      (validityFilter === 'expired' && isExpired) ||
+      (validityFilter === 'scheduled' && isScheduled);
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesValidity;
   });
 
   const handleOpenCreate = () => {
@@ -130,6 +142,34 @@ export default function AdminCoupons() {
   const handleOpenDelete = (coupon: Coupon) => {
     setDeletingCoupon(coupon);
     setDeleteDialogOpen(true);
+  };
+
+  const handleDuplicate = (coupon: Coupon) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const randomSuffix = Array.from({ length: 4 }, () => 
+      chars.charAt(Math.floor(Math.random() * chars.length))
+    ).join('');
+    
+    setEditingCoupon(null);
+    setFormData({
+      code: `${coupon.code}_${randomSuffix}`,
+      description: coupon.description ? `Copy of ${coupon.description}` : null,
+      discount_type: coupon.discount_type,
+      discount_value: coupon.discount_value,
+      min_purchase: coupon.min_purchase,
+      max_discount: coupon.max_discount,
+      usage_limit: coupon.usage_limit,
+      per_user_limit: coupon.per_user_limit,
+      starts_at: null,
+      expires_at: null,
+      is_active: false,
+    });
+    setDialogOpen(true);
+    
+    toast({
+      title: 'Duplikat kupon',
+      description: 'Silakan edit kode dan detail kupon baru',
+    });
   };
 
   const handleSubmit = () => {
@@ -419,13 +459,24 @@ export default function AdminCoupons() {
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-          <SelectTrigger className="w-full sm:w-[150px]">
-            <SelectValue placeholder="Filter Status" />
+          <SelectTrigger className="w-full sm:w-[130px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Status</SelectItem>
+            <SelectItem value="active">Aktif</SelectItem>
+            <SelectItem value="inactive">Nonaktif</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={validityFilter} onValueChange={(v) => setValidityFilter(v as typeof validityFilter)}>
+          <SelectTrigger className="w-full sm:w-[130px]">
+            <SelectValue placeholder="Berlaku" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua</SelectItem>
-            <SelectItem value="active">Aktif</SelectItem>
-            <SelectItem value="inactive">Nonaktif</SelectItem>
+            <SelectItem value="valid">Berlaku</SelectItem>
+            <SelectItem value="expired">Kadaluarsa</SelectItem>
+            <SelectItem value="scheduled">Terjadwal</SelectItem>
           </SelectContent>
         </Select>
         <input
@@ -621,7 +672,7 @@ export default function AdminCoupons() {
                       <Badge variant={status.variant}>{status.label}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1">
                         <Switch
                           checked={coupon.is_active}
                           onCheckedChange={(checked) => toggleActive({ id: coupon.id, isActive: checked })}
@@ -630,7 +681,16 @@ export default function AdminCoupons() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleDuplicate(coupon)}
+                          title="Duplikat kupon"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleOpenEdit(coupon)}
+                          title="Edit kupon"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -639,6 +699,7 @@ export default function AdminCoupons() {
                           size="icon"
                           className="text-destructive hover:text-destructive"
                           onClick={() => handleOpenDelete(coupon)}
+                          title="Hapus kupon"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
