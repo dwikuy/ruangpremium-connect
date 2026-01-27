@@ -351,3 +351,85 @@ export function useToggleApiKeyStatus() {
     },
   });
 }
+
+// Get all webhook deliveries (for admin)
+export function useWebhookDeliveries(filters?: { status?: 'success' | 'failed' | 'all' }) {
+  return useQuery({
+    queryKey: ['admin-webhook-deliveries', filters],
+    queryFn: async () => {
+      let query = supabase
+        .from('webhook_deliveries')
+        .select(`
+          *,
+          api_key:reseller_api_keys (
+            id,
+            name,
+            user_id,
+            webhook_url
+          ),
+          order:orders (
+            id,
+            customer_name,
+            status,
+            total_amount
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (filters?.status === 'success') {
+        query = query.not('delivered_at', 'is', null);
+      } else if (filters?.status === 'failed') {
+        query = query.is('delivered_at', null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+// Retry webhook delivery
+export function useRetryWebhook() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (deliveryId: string) => {
+      // Get the delivery details
+      const { data: delivery, error: deliveryError } = await supabase
+        .from('webhook_deliveries')
+        .select('order_id, event_type')
+        .eq('id', deliveryId)
+        .single();
+
+      if (deliveryError) throw deliveryError;
+
+      // Call send-webhook function
+      const { data, error } = await supabase.functions.invoke('send-webhook', {
+        body: {
+          order_id: delivery.order_id,
+          event_type: delivery.event_type,
+        },
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Berhasil',
+        description: 'Webhook berhasil dikirim ulang.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-webhook-deliveries'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
