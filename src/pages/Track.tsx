@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
+import { DeliveryResult } from '@/components/order/DeliveryResult';
 import { 
   Package, 
   CreditCard, 
@@ -290,7 +291,7 @@ export default function Track() {
                       onClick={() => handleCopy(order.id, 'orderId')}
                     >
                       {copied === 'orderId' ? (
-                        <Check className="h-3 w-3 text-green-500" />
+                        <Check className="h-3 w-3 text-success" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -335,9 +336,9 @@ export default function Track() {
 
             {/* Delivery Result */}
             {order.status === 'DELIVERED' && order.items.some(item => item.delivery_data) && (
-              <Card className="glass-card border-gold/50">
+              <Card className="glass-card border-success/30">
                 <CardHeader>
-                  <CardTitle className="text-lg text-gold flex items-center gap-2">
+                  <CardTitle className="text-lg text-success flex items-center gap-2">
                     <CheckCircle className="h-5 w-5" />
                     Hasil Pesanan
                   </CardTitle>
@@ -345,19 +346,12 @@ export default function Track() {
                 <CardContent className="space-y-4">
                   {order.items.map((item) => (
                     item.delivery_data && (
-                      <div key={item.id} className="p-4 bg-gold/5 rounded-lg border border-gold/20">
-                        <p className="font-medium mb-2">{item.product_name}</p>
-                        <pre className="text-sm bg-background p-3 rounded overflow-x-auto">
-                          {typeof item.delivery_data === 'object' 
-                            ? JSON.stringify(item.delivery_data, null, 2)
-                            : String(item.delivery_data)}
-                        </pre>
-                        {item.delivered_at && (
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Dikirim: {formatDate(item.delivered_at)}
-                          </p>
-                        )}
-                      </div>
+                      <DeliveryResult
+                        key={item.id}
+                        productName={item.product_name}
+                        deliveryData={item.delivery_data}
+                        deliveredAt={item.delivered_at}
+                      />
                     )
                   ))}
                 </CardContent>
