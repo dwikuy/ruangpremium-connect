@@ -41,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Pencil, Trash2, Ticket, Search, Percent, Banknote, Calendar, Users, Download, Upload, FileSpreadsheet, Shuffle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/format';
@@ -669,13 +669,36 @@ export default function AdminCoupons() {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="code">Kode Kupon *</Label>
-              <Input
-                id="code"
-                placeholder="Contoh: DISKON10"
-                value={formData.code}
-                onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                className="uppercase"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="code"
+                  placeholder="Contoh: DISKON10"
+                  value={formData.code}
+                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                  className="uppercase flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                    const prefix = formData.discount_type === 'PERCENTAGE' 
+                      ? `DISC${formData.discount_value || ''}` 
+                      : 'PROMO';
+                    const randomPart = Array.from({ length: 4 }, () => 
+                      chars.charAt(Math.floor(Math.random() * chars.length))
+                    ).join('');
+                    setFormData(prev => ({ ...prev, code: `${prefix}${randomPart}` }));
+                  }}
+                  title="Generate kode otomatis"
+                >
+                  <Shuffle className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Klik ikon shuffle untuk generate kode otomatis
+              </p>
             </div>
             
             <div className="grid gap-2">
