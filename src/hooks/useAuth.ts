@@ -205,6 +205,10 @@ export function useAuth() {
   const isReseller = profile?.role === 'reseller';
   const isMember = profile?.role === 'member';
 
+  const refreshProfile = useCallback(() => {
+    if (user) fetchProfile(user.id);
+  }, [user, fetchProfile]);
+
   return {
     user,
     session,
@@ -217,6 +221,6 @@ export function useAuth() {
     signIn,
     signOut,
     resetPassword,
-    refreshProfile: () => user && fetchProfile(user.id),
+    refreshProfile,
   };
 }
