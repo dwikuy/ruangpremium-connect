@@ -15,7 +15,10 @@ import {
   ChevronLeft,
   Users,
   CreditCard,
-  Tag
+  Tag,
+  Zap,
+  Database,
+  Server
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,7 +32,10 @@ const menuItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/orders', label: 'Pesanan', icon: ShoppingCart },
   { href: '/admin/products', label: 'Produk', icon: Package },
+  { href: '/admin/stock', label: 'Stok', icon: Database },
   { href: '/admin/categories', label: 'Kategori', icon: Tag },
+  { href: '/admin/providers', label: 'Provider', icon: Server },
+  { href: '/admin/fulfillment', label: 'Fulfillment', icon: Zap },
   { href: '/admin/coupons', label: 'Kupon', icon: CreditCard },
   { href: '/admin/users', label: 'Pengguna', icon: Users },
   { href: '/admin/settings', label: 'Pengaturan', icon: Settings },
