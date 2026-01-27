@@ -1,20 +1,21 @@
 import { AccountLayout } from '@/components/account/AccountLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUserPoints, usePointsHistory } from '@/hooks/useProfile';
+import { usePointsSettings } from '@/hooks/usePoints';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Award, TrendingUp, TrendingDown, Info } from 'lucide-react';
 
 const transactionTypeConfig: Record<string, { label: string; color: string; icon: typeof TrendingUp }> = {
-  EARNED: { label: 'Diterima', color: 'text-green-500', icon: TrendingUp },
-  REDEEMED: { label: 'Digunakan', color: 'text-red-500', icon: TrendingDown },
-  ADJUSTMENT: { label: 'Penyesuaian', color: 'text-blue-500', icon: Info },
+  EARNED: { label: 'Diterima', color: 'text-success', icon: TrendingUp },
+  REDEEMED: { label: 'Digunakan', color: 'text-destructive', icon: TrendingDown },
+  ADJUSTMENT: { label: 'Penyesuaian', color: 'text-primary', icon: Info },
 };
 
 export default function AccountPointsPage() {
   const { data: points, isLoading: pointsLoading } = useUserPoints();
   const { data: history, isLoading: historyLoading } = usePointsHistory();
+  const { data: settings } = usePointsSettings();
 
   if (pointsLoading) {
     return (
@@ -50,8 +51,8 @@ export default function AccountPointsPage() {
         <Card className="glass-card">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-green-500/10">
-                <TrendingUp className="h-6 w-6 text-green-500" />
+              <div className="p-3 rounded-lg bg-success/10">
+                <TrendingUp className="h-6 w-6 text-success" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Diterima</p>
@@ -64,8 +65,8 @@ export default function AccountPointsPage() {
         <Card className="glass-card">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-red-500/10">
-                <TrendingDown className="h-6 w-6 text-red-500" />
+              <div className="p-3 rounded-lg bg-destructive/10">
+                <TrendingDown className="h-6 w-6 text-destructive" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Digunakan</p>
@@ -84,10 +85,10 @@ export default function AccountPointsPage() {
             <div className="text-sm">
               <p className="font-medium mb-1">Cara Mendapatkan Poin</p>
               <ul className="text-muted-foreground space-y-1">
-                <li>• Setiap pembelian berhasil akan mendapatkan poin (1 poin per Rp 100)</li>
+                <li>• Setiap pembelian berhasil akan mendapatkan poin ({settings?.earnRate || 1} poin per {formatCurrency(settings?.perAmount || 100)})</li>
                 <li>• Poin dapat ditukar untuk diskon di pembelian berikutnya</li>
-                <li>• 1 poin = {formatCurrency(1)} diskon</li>
-                <li>• Maksimal penukaran poin: 30% dari total belanja</li>
+                <li>• 1 poin = {formatCurrency(settings?.redeemValue || 1)} diskon</li>
+                <li>• Maksimal penukaran poin: {settings?.maxRedeemPercent || 30}% dari total belanja</li>
               </ul>
             </div>
           </div>
@@ -136,7 +137,7 @@ export default function AccountPointsPage() {
                     </div>
 
                     <div className="text-right">
-                      <p className={`font-bold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                      <p className={`font-bold ${isPositive ? 'text-success' : 'text-destructive'}`}>
                         {isPositive ? '+' : ''}{transaction.amount}
                       </p>
                       <p className="text-xs text-muted-foreground">
