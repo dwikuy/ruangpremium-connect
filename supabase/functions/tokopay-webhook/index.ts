@@ -168,6 +168,23 @@ serve(async (req) => {
           });
         }
       }
+
+      // Trigger fulfillment processing immediately
+      try {
+        const triggerUrl = `${supabaseUrl}/functions/v1/trigger-fulfillment`;
+        await fetch(triggerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ order_id: payment.order_id }),
+        });
+        console.log(`Triggered fulfillment for order ${payment.order_id}`);
+      } catch (triggerError) {
+        console.error("Failed to trigger fulfillment:", triggerError);
+        // Don't throw - fulfillment can be retried later
+      }
     }
 
     return new Response(
