@@ -6,14 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Package, Clock, Shield } from 'lucide-react';
-import { useProduct } from '@/hooks/useProducts';
+import { useProductById } from '@/hooks/useProducts';
 import { useAuth } from '@/hooks/useAuth';
 import { useCheckout } from '@/hooks/useCheckout';
 import { formatCurrency } from '@/lib/format';
 
 export default function Checkout() {
   const { productId } = useParams<{ productId: string }>();
-  const { data: product, isLoading: productLoading, error: productError } = useProduct(productId || '');
+  const { data: product, isLoading: productLoading, error: productError } = useProductById(productId || '');
   const { profile, loading: authLoading } = useAuth();
   const { loading, couponValidation, pointsValidation, validateCoupon, validatePoints, createOrder } = useCheckout(product || null);
 
@@ -149,7 +149,7 @@ export default function Checkout() {
                   {product.product_type === 'STOCK' && product.stock_count !== undefined && (
                     <div className="flex items-center gap-2 text-sm">
                       <Package className="h-4 w-4" />
-                      <span className={product.stock_count > 0 ? 'text-green-500' : 'text-destructive'}>
+                      <span className={product.stock_count > 0 ? 'text-success' : 'text-destructive'}>
                         {product.stock_count > 0 ? `${product.stock_count} tersedia` : 'Stok habis'}
                       </span>
                     </div>
@@ -159,11 +159,11 @@ export default function Checkout() {
                 {/* Trust Badges */}
                 <div className="mt-6 pt-6 border-t border-border space-y-3">
                   <div className="flex items-center gap-3 text-sm">
-                    <Shield className="h-4 w-4 text-green-500" />
+                    <Shield className="h-4 w-4 text-success" />
                     <span>Pembayaran Aman via QRIS</span>
                   </div>
                   <div className="flex items-center gap-3 text-sm">
-                    <Package className="h-4 w-4 text-green-500" />
+                    <Package className="h-4 w-4 text-success" />
                     <span>Pengiriman Instan 24/7</span>
                   </div>
                 </div>
