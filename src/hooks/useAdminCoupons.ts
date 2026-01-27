@@ -173,6 +173,40 @@ export function useAdminCoupons() {
     },
   });
 
+  const bulkImportMutation = useMutation({
+    mutationFn: async (couponsData: CouponFormData[]) => {
+      const formattedData = couponsData.map(coupon => ({
+        ...coupon,
+        code: coupon.code.toUpperCase(),
+      }));
+
+      const { data, error } = await supabase
+        .from('coupons')
+        .insert(formattedData)
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
+      toast({
+        title: 'Berhasil',
+        description: `${data.length} kupon berhasil diimport`,
+      });
+    },
+    onError: (error: Error) => {
+      console.error('Failed to import coupons:', error);
+      toast({
+        title: 'Gagal',
+        description: error.message.includes('duplicate') 
+          ? 'Beberapa kode kupon sudah ada' 
+          : 'Gagal mengimport kupon',
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     coupons,
     isLoading,
@@ -181,9 +215,11 @@ export function useAdminCoupons() {
     updateCoupon: updateMutation.mutate,
     deleteCoupon: deleteMutation.mutate,
     toggleActive: toggleActiveMutation.mutate,
+    bulkImport: bulkImportMutation.mutateAsync,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
     isToggling: toggleActiveMutation.isPending,
+    isImporting: bulkImportMutation.isPending,
   };
 }
