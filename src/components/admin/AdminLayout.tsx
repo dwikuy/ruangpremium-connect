@@ -18,7 +18,8 @@ import {
   Tag,
   Zap,
   Database,
-  Server
+  Server,
+  Store
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +39,7 @@ const menuItems = [
   { href: '/admin/fulfillment', label: 'Fulfillment', icon: Zap },
   { href: '/admin/coupons', label: 'Kupon', icon: CreditCard },
   { href: '/admin/users', label: 'Pengguna', icon: Users },
+  { href: '/admin/resellers', label: 'Reseller', icon: Store },
   { href: '/admin/settings', label: 'Pengaturan', icon: Settings },
 ];
 

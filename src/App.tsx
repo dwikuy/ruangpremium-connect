@@ -37,6 +37,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminStock from "./pages/admin/AdminStock";
 import AdminProviders from "./pages/admin/AdminProviders";
 import AdminFulfillment from "./pages/admin/AdminFulfillment";
+import AdminResellers from "./pages/admin/AdminResellers";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +84,7 @@ const App = () => (
           <Route path="/admin/stock" element={<AdminStock />} />
           <Route path="/admin/providers" element={<AdminProviders />} />
           <Route path="/admin/fulfillment" element={<AdminFulfillment />} />
+          <Route path="/admin/resellers" element={<AdminResellers />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
