@@ -9,6 +9,9 @@ import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Checkout from "./pages/Checkout";
+import Invoice from "./pages/Invoice";
+import Track from "./pages/Track";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +25,10 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/products" element={<Products />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
+          <Route path="/checkout/:productId" element={<Checkout />} />
+          <Route path="/invoice/:orderId" element={<Invoice />} />
+          <Route path="/track" element={<Track />} />
+          <Route path="/track/:orderId" element={<Track />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
