@@ -900,6 +900,22 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_reseller_or_admin: { Args: never; Returns: boolean }
+      redeem_points: {
+        Args: {
+          p_order_id: string
+          p_points_to_redeem: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      validate_points_redemption: {
+        Args: {
+          p_points_to_redeem: number
+          p_subtotal: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "member" | "reseller" | "admin"

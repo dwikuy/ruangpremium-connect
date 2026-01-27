@@ -2,11 +2,20 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { redeemPoints, validatePointsRedemption } from '@/hooks/usePoints';
 import type { ProductWithCategory, CheckoutFormData, CouponValidation } from '@/types/database';
+
+interface PointsValidation {
+  valid: boolean;
+  error?: string;
+  max_redeemable?: number;
+  discount_amount?: number;
+}
 
 export function useCheckout(product: ProductWithCategory | null) {
   const [loading, setLoading] = useState(false);
   const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
+  const [pointsValidation, setPointsValidation] = useState<PointsValidation | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -98,6 +107,24 @@ export function useCheckout(product: ProductWithCategory | null) {
     }
   };
 
+  const validatePoints = async (userId: string, pointsToRedeem: number, subtotal: number) => {
+    if (pointsToRedeem <= 0) {
+      setPointsValidation(null);
+      return null;
+    }
+
+    try {
+      const result = await validatePointsRedemption(userId, pointsToRedeem, subtotal);
+      setPointsValidation(result);
+      return result;
+    } catch (error) {
+      console.error('Error validating points:', error);
+      const validation: PointsValidation = { valid: false, error: 'Gagal memvalidasi poin' };
+      setPointsValidation(validation);
+      return validation;
+    }
+  };
+
   const createOrder = async (formData: CheckoutFormData, userId?: string) => {
     if (!product) {
       toast({
@@ -126,7 +153,22 @@ export function useCheckout(product: ProductWithCategory | null) {
 
       const subtotal = product.retail_price * formData.quantity;
       const discountAmount = couponValidation?.calculated_discount || 0;
-      const pointsDiscount = formData.points_to_use ? formData.points_to_use : 0;
+      
+      // Validate points if user wants to use them
+      let pointsDiscount = 0;
+      let validatedPoints = 0;
+      
+      if (userId && formData.points_to_use && formData.points_to_use > 0) {
+        const pointsResult = await validatePointsRedemption(userId, formData.points_to_use, subtotal);
+        
+        if (!pointsResult.valid) {
+          throw new Error(pointsResult.error || 'Validasi poin gagal');
+        }
+        
+        validatedPoints = formData.points_to_use;
+        pointsDiscount = pointsResult.discount_amount || formData.points_to_use;
+      }
+      
       const totalAmount = Math.max(0, subtotal - discountAmount - pointsDiscount);
 
       // Generate guest token if not logged in
@@ -156,7 +198,7 @@ export function useCheckout(product: ProductWithCategory | null) {
           customer_phone: formData.customer_phone,
           subtotal,
           discount_amount: discountAmount,
-          points_used: formData.points_to_use || 0,
+          points_used: validatedPoints,
           points_discount: pointsDiscount,
           total_amount: totalAmount,
           coupon_id: couponId,
@@ -187,12 +229,31 @@ export function useCheckout(product: ProductWithCategory | null) {
         throw new Error('Gagal membuat item pesanan');
       }
 
+      // Redeem points if used (this will deduct from balance)
+      if (userId && validatedPoints > 0) {
+        const redeemResult = await redeemPoints(userId, order.id, validatedPoints);
+        if (!redeemResult.success) {
+          console.error('Points redemption failed:', redeemResult.error);
+          // Note: Order is already created, points redemption failure is logged but order proceeds
+          toast({
+            title: 'Peringatan',
+            description: 'Gagal menukarkan poin, tapi pesanan tetap dibuat',
+            variant: 'destructive',
+          });
+        }
+      }
+
       // Update coupon usage if used
       if (couponId) {
-        // Increment usage count directly
+        const { data: couponData } = await supabase
+          .from('coupons')
+          .select('usage_count')
+          .eq('id', couponId)
+          .single();
+          
         await supabase
           .from('coupons')
-          .update({ usage_count: (await supabase.from('coupons').select('usage_count').eq('id', couponId).single()).data?.usage_count ?? 0 + 1 })
+          .update({ usage_count: (couponData?.usage_count ?? 0) + 1 })
           .eq('id', couponId);
       }
 
@@ -225,7 +286,9 @@ export function useCheckout(product: ProductWithCategory | null) {
   return {
     loading,
     couponValidation,
+    pointsValidation,
     validateCoupon,
+    validatePoints,
     createOrder,
   };
 }
