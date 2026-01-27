@@ -280,3 +280,72 @@ export function useDeleteApiKey() {
     },
   });
 }
+
+// Update webhook settings
+export function useUpdateWebhook() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      keyId, 
+      webhookUrl, 
+      webhookSecret, 
+      webhookEnabled 
+    }: { 
+      keyId: string; 
+      webhookUrl?: string; 
+      webhookSecret?: string; 
+      webhookEnabled?: boolean;
+    }) => {
+      const updateData: Record<string, unknown> = {};
+      if (webhookUrl !== undefined) updateData.webhook_url = webhookUrl;
+      if (webhookSecret !== undefined) updateData.webhook_secret = webhookSecret;
+      if (webhookEnabled !== undefined) updateData.webhook_enabled = webhookEnabled;
+      
+      const { error } = await supabase
+        .from('reseller_api_keys')
+        .update(updateData)
+        .eq('id', keyId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Webhook Diperbarui',
+        description: 'Pengaturan webhook berhasil disimpan.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['reseller-api-keys'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Gagal Memperbarui Webhook',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// Get webhook deliveries
+export function useWebhookDeliveries(apiKeyId?: string) {
+  return useQuery({
+    queryKey: ['webhook-deliveries', apiKeyId],
+    queryFn: async () => {
+      let query = supabase
+        .from('webhook_deliveries')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (apiKeyId) {
+        query = query.eq('api_key_id', apiKeyId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!apiKeyId,
+  });
+}

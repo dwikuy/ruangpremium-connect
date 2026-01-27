@@ -185,6 +185,26 @@ serve(async (req) => {
         console.error("Failed to trigger fulfillment:", triggerError);
         // Don't throw - fulfillment can be retried later
       }
+
+      // Send webhook notification for PAID status
+      try {
+        const webhookUrl = `${supabaseUrl}/functions/v1/send-webhook`;
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ 
+            order_id: payment.order_id,
+            event_type: "order.paid"
+          }),
+        });
+        console.log(`Sent webhook for paid order ${payment.order_id}`);
+      } catch (webhookError) {
+        console.error("Failed to send webhook:", webhookError);
+        // Don't throw - webhook can be retried
+      }
     }
 
     return new Response(

@@ -555,6 +555,29 @@ async function checkAndUpdateOrderStatus(
       .eq("id", orderId);
 
     console.log(`Order ${orderId} marked as DELIVERED`);
+
+    // Send webhook notification for DELIVERED status
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      
+      const webhookUrl = `${supabaseUrl}/functions/v1/send-webhook`;
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ 
+          order_id: orderId,
+          event_type: "order.delivered"
+        }),
+      });
+      console.log(`Sent webhook for delivered order ${orderId}`);
+    } catch (webhookError) {
+      console.error("Failed to send webhook:", webhookError);
+      // Don't throw - webhook failure shouldn't affect order status
+    }
   } else {
     // Some items still processing
     await supabase

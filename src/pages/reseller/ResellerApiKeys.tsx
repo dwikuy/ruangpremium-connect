@@ -5,11 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   useResellerApiKeys, 
   useGenerateApiKey, 
   useRevokeApiKey,
-  useDeleteApiKey 
+  useDeleteApiKey,
+  useUpdateWebhook,
+  useWebhookDeliveries
 } from '@/hooks/useReseller';
 import { 
   Key, 
@@ -20,7 +25,12 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle,
-  XCircle
+  XCircle,
+  Webhook,
+  Settings,
+  History,
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -45,18 +55,31 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 export default function ResellerApiKeys() {
   const { data: apiKeys, isLoading } = useResellerApiKeys();
   const generateApiKey = useGenerateApiKey();
   const revokeApiKey = useRevokeApiKey();
   const deleteApiKey = useDeleteApiKey();
+  const updateWebhook = useUpdateWebhook();
   const { toast } = useToast();
   
   const [keyName, setKeyName] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newKeyData, setNewKeyData] = useState<{ rawKey: string; keyPrefix: string } | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [webhookDialog, setWebhookDialog] = useState<{ keyId: string; url: string; secret: string; enabled: boolean } | null>(null);
+  const [selectedKeyForLogs, setSelectedKeyForLogs] = useState<string | null>(null);
+
+  const { data: webhookLogs, isLoading: loadingLogs } = useWebhookDeliveries(selectedKeyForLogs || undefined);
 
   const handleCreateKey = async () => {
     if (!keyName.trim()) return;
@@ -71,8 +94,27 @@ export default function ResellerApiKeys() {
     navigator.clipboard.writeText(text);
     toast({
       title: 'Disalin!',
-      description: 'API key telah disalin ke clipboard.',
+      description: 'Teks telah disalin ke clipboard.',
     });
+  };
+
+  const handleSaveWebhook = () => {
+    if (!webhookDialog) return;
+    updateWebhook.mutate({
+      keyId: webhookDialog.keyId,
+      webhookUrl: webhookDialog.url || undefined,
+      webhookSecret: webhookDialog.secret || undefined,
+      webhookEnabled: webhookDialog.enabled,
+    }, {
+      onSuccess: () => setWebhookDialog(null),
+    });
+  };
+
+  const generateWebhookSecret = () => {
+    const secret = 'whsec_' + crypto.randomUUID().replace(/-/g, '');
+    if (webhookDialog) {
+      setWebhookDialog({ ...webhookDialog, secret });
+    }
   };
 
   const activeKeys = apiKeys?.filter(k => k.is_active) || [];
@@ -81,7 +123,7 @@ export default function ResellerApiKeys() {
   return (
     <ResellerLayout 
       title="API Keys" 
-      description="Kelola API keys untuk integrasi dengan sistem Anda"
+      description="Kelola API keys dan webhook untuk integrasi dengan sistem Anda"
     >
       {/* New Key Modal */}
       {newKeyData && (
@@ -89,7 +131,7 @@ export default function ResellerApiKeys() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-success" />
+                <CheckCircle className="h-5 w-5 text-primary" />
                 API Key Berhasil Dibuat!
               </DialogTitle>
               <DialogDescription>
@@ -178,6 +220,175 @@ export default function ResellerApiKeys() {
         </DialogContent>
       </Dialog>
 
+      {/* Webhook Settings Dialog */}
+      <Dialog open={!!webhookDialog} onOpenChange={() => setWebhookDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Webhook className="h-5 w-5" />
+              Pengaturan Webhook
+            </DialogTitle>
+            <DialogDescription>
+              Konfigurasi webhook untuk menerima notifikasi status order secara real-time
+            </DialogDescription>
+          </DialogHeader>
+          {webhookDialog && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Aktifkan Webhook</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Kirim notifikasi saat status order berubah
+                  </p>
+                </div>
+                <Switch
+                  checked={webhookDialog.enabled}
+                  onCheckedChange={(checked) => 
+                    setWebhookDialog({ ...webhookDialog, enabled: checked })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="webhook-url">Webhook URL</Label>
+                <Input
+                  id="webhook-url"
+                  type="url"
+                  placeholder="https://your-site.com/webhook"
+                  value={webhookDialog.url}
+                  onChange={(e) => 
+                    setWebhookDialog({ ...webhookDialog, url: e.target.value })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  URL endpoint yang akan menerima POST request
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="webhook-secret">Webhook Secret</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="webhook-secret"
+                    placeholder="whsec_..."
+                    value={webhookDialog.secret}
+                    onChange={(e) => 
+                      setWebhookDialog({ ...webhookDialog, secret: e.target.value })
+                    }
+                  />
+                  <Button variant="outline" onClick={generateWebhookSecret}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Secret untuk memverifikasi signature webhook
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-muted/50 text-sm">
+                <p className="font-medium mb-2">Format Payload Webhook:</p>
+                <pre className="text-xs overflow-x-auto bg-background p-2 rounded">
+{`{
+  "event": "order.paid|order.delivered",
+  "order_id": "uuid",
+  "order_status": "PAID|DELIVERED",
+  "customer_email": "email",
+  "customer_name": "name",
+  "total_amount": 100000,
+  "items": [...],
+  "created_at": "timestamp"
+}`}
+                </pre>
+                <p className="mt-2 text-muted-foreground">
+                  Header: <code className="bg-background px-1 rounded">X-Webhook-Signature</code> untuk verifikasi
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWebhookDialog(null)}>
+              Batal
+            </Button>
+            <Button 
+              onClick={handleSaveWebhook}
+              disabled={updateWebhook.isPending}
+            >
+              {updateWebhook.isPending ? 'Menyimpan...' : 'Simpan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Webhook Logs Dialog */}
+      <Dialog open={!!selectedKeyForLogs} onOpenChange={() => setSelectedKeyForLogs(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Riwayat Webhook
+            </DialogTitle>
+            <DialogDescription>
+              Log pengiriman webhook terbaru (50 terakhir)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {loadingLogs ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : !webhookLogs || webhookLogs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Belum ada riwayat webhook
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Waktu</TableHead>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Response</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {webhookLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-sm">
+                        {format(new Date(log.created_at), 'dd MMM HH:mm:ss', { locale: id })}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{log.event_type}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {log.delivered_at ? (
+                          <Badge className="bg-primary/20 text-primary">
+                            {log.response_status}
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            Failed
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                        {log.error || log.response_body || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedKeyForLogs(null)}>
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Active Keys */}
       <Card className="glass-card mb-6">
         <CardHeader>
@@ -206,53 +417,95 @@ export default function ResellerApiKeys() {
               {activeKeys.map((key) => (
                 <div 
                   key={key.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg bg-muted/30"
+                  className="flex flex-col gap-4 p-4 rounded-lg bg-muted/30"
                 >
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium">{key.name}</p>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/20 text-success">
-                        Aktif
-                      </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium">{key.name}</p>
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                          Aktif
+                        </Badge>
+                        {(key as any).webhook_enabled && (
+                          <Badge variant="outline" className="bg-secondary/10 text-secondary border-secondary/30">
+                            <Webhook className="h-3 w-3 mr-1" />
+                            Webhook
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="font-mono text-sm text-muted-foreground">
+                        {key.key_prefix}...
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Dibuat: {format(new Date(key.created_at), 'dd MMM yyyy', { locale: id })}
+                        {key.last_used_at && (
+                          <> • Terakhir digunakan: {format(new Date(key.last_used_at), 'dd MMM yyyy, HH:mm', { locale: id })}</>
+                        )}
+                      </p>
                     </div>
-                    <p className="font-mono text-sm text-muted-foreground">
-                      {key.key_prefix}...
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Dibuat: {format(new Date(key.created_at), 'dd MMM yyyy', { locale: id })}
-                      {key.last_used_at && (
-                        <> • Terakhir digunakan: {format(new Date(key.last_used_at), 'dd MMM yyyy, HH:mm', { locale: id })}</>
-                      )}
-                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setWebhookDialog({
+                          keyId: key.id,
+                          url: (key as any).webhook_url || '',
+                          secret: (key as any).webhook_secret || '',
+                          enabled: (key as any).webhook_enabled || false,
+                        })}
+                      >
+                        <Webhook className="h-4 w-4 mr-2" />
+                        Webhook
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setSelectedKeyForLogs(key.id)}
+                      >
+                        <History className="h-4 w-4 mr-2" />
+                        Logs
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="text-warning">
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Cabut
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cabut API Key?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              API key "{key.name}" tidak akan bisa digunakan lagi setelah dicabut.
+                              Tindakan ini tidak dapat dibatalkan.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Batal</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => revokeApiKey.mutate(key.id)}
+                              className="bg-warning hover:bg-warning/90"
+                            >
+                              Ya, Cabut Key
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="text-warning">
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Cabut
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Cabut API Key?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            API key "{key.name}" tidak akan bisa digunakan lagi setelah dicabut.
-                            Tindakan ini tidak dapat dibatalkan.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Batal</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => revokeApiKey.mutate(key.id)}
-                            className="bg-warning hover:bg-warning/90"
-                          >
-                            Ya, Cabut Key
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
+                  
+                  {/* Webhook URL display */}
+                  {(key as any).webhook_enabled && (key as any).webhook_url && (
+                    <div className="pt-3 border-t border-border">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Webhook className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Webhook URL:</span>
+                        <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[300px]">
+                          {(key as any).webhook_url}
+                        </code>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -279,9 +532,9 @@ export default function ResellerApiKeys() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-medium">{key.name}</p>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/20 text-destructive">
+                      <Badge variant="destructive">
                         Dicabut
-                      </span>
+                      </Badge>
                     </div>
                     <p className="font-mono text-sm text-muted-foreground">
                       {key.key_prefix}...
