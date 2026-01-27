@@ -190,6 +190,40 @@ export function useUpdateProduct() {
   });
 }
 
+export function useArchiveProduct() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Archive product error:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      toast({
+        title: 'Berhasil',
+        description: 'Produk berhasil diarsipkan',
+      });
+    },
+    onError: (error: Error) => {
+      console.error('Archive product mutation error:', error);
+      toast({
+        title: 'Gagal',
+        description: error.message || 'Gagal mengarsipkan produk',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
 export function useDeleteProduct() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

@@ -7,6 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -25,21 +32,34 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Search, Plus, Edit, Trash2, Package, RefreshCw } from 'lucide-react';
-import { useAdminProducts, useUpdateProduct, useDeleteProduct } from '@/hooks/useAdminProducts';
+import { Search, Plus, Edit, Trash2, Package, RefreshCw, Archive, RotateCcw } from 'lucide-react';
+import { useAdminProducts, useUpdateProduct, useDeleteProduct, useArchiveProduct } from '@/hooks/useAdminProducts';
 import { formatCurrency } from '@/lib/format';
 import { Link } from 'react-router-dom';
 
+type StatusFilter = 'all' | 'active' | 'archived';
+
 export default function AdminProducts() {
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const { data: products, isLoading, refetch } = useAdminProducts();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
+  const archiveProduct = useArchiveProduct();
 
-  const filteredProducts = products?.filter((product) =>
-    product.name.toLowerCase().includes(search.toLowerCase()) ||
-    product.slug.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = products?.filter((product) => {
+    // Text search filter
+    const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
+      product.slug.toLowerCase().includes(search.toLowerCase());
+    
+    // Status filter
+    const matchesStatus = 
+      statusFilter === 'all' ? true :
+      statusFilter === 'active' ? product.is_active === true :
+      statusFilter === 'archived' ? product.is_active === false : true;
+    
+    return matchesSearch && matchesStatus;
+  });
 
   const handleToggleActive = (id: string, isActive: boolean) => {
     updateProduct.mutate({ id, data: { is_active: !isActive } });
@@ -53,31 +73,51 @@ export default function AdminProducts() {
     deleteProduct.mutate(id);
   };
 
+  const handleArchive = (id: string) => {
+    archiveProduct.mutate(id);
+  };
+
+  const handleRestore = (id: string) => {
+    updateProduct.mutate({ id, data: { is_active: true } });
+  };
+
   return (
     <AdminLayout title="Produk" description="Kelola katalog produk">
       <Card className="glass-card">
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <CardTitle>Daftar Produk</CardTitle>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari produk..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 w-full sm:w-64"
-                />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <CardTitle>Daftar Produk</CardTitle>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Cari produk..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-10 w-full sm:w-64"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                  <SelectTrigger className="w-full sm:w-36">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua</SelectItem>
+                    <SelectItem value="active">Aktif</SelectItem>
+                    <SelectItem value="archived">Diarsipkan</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => refetch()}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button asChild>
+                  <Link to="/admin/products/new">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Tambah Produk
+                  </Link>
+                </Button>
               </div>
-              <Button variant="outline" size="icon" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button asChild>
-                <Link to="/admin/products/new">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Tambah Produk
-                </Link>
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -105,7 +145,7 @@ export default function AdminProducts() {
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow key={product.id} className={product.is_active === false ? 'opacity-60' : ''}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {product.image_url ? (
@@ -120,7 +160,12 @@ export default function AdminProducts() {
                             </div>
                           )}
                           <div>
-                            <p className="font-medium">{product.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{product.name}</p>
+                              {product.is_active === false && (
+                                <Badge variant="secondary" className="text-xs">Diarsipkan</Badge>
+                              )}
+                            </div>
                             <p className="text-sm text-muted-foreground">{product.slug}</p>
                           </div>
                         </div>
@@ -170,27 +215,55 @@ export default function AdminProducts() {
                               <Edit className="h-4 w-4" />
                             </Link>
                           </Button>
+                          
+                          {/* Restore button for archived products */}
+                          {product.is_active === false && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => handleRestore(product.id)}
+                              disabled={updateProduct.isPending}
+                              title="Pulihkan produk"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          )}
+                          
+                          {/* Archive button */}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="text-destructive">
-                                <Trash2 className="h-4 w-4" />
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className={product.is_active === false ? "text-destructive" : "text-muted-foreground"}
+                                title={product.is_active === false ? "Hapus permanen" : "Arsipkan"}
+                              >
+                                {product.is_active === false ? (
+                                  <Trash2 className="h-4 w-4" />
+                                ) : (
+                                  <Archive className="h-4 w-4" />
+                                )}
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Hapus Produk?</AlertDialogTitle>
+                                <AlertDialogTitle>
+                                  {product.is_active === false ? 'Hapus Permanen?' : 'Arsipkan Produk?'}
+                                </AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Apakah Anda yakin ingin menghapus produk "{product.name}"? 
-                                  Tindakan ini tidak dapat dibatalkan.
+                                  {product.is_active === false 
+                                    ? `Apakah Anda yakin ingin menghapus permanen produk "${product.name}"? Tindakan ini tidak dapat dibatalkan.`
+                                    : `Produk "${product.name}" akan diarsipkan dan tidak tampil di katalog. Anda dapat memulihkannya kapan saja.`
+                                  }
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Batal</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => handleDelete(product.id)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => product.is_active === false ? handleDelete(product.id) : handleArchive(product.id)}
+                                  className={product.is_active === false ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
                                 >
-                                  Hapus
+                                  {product.is_active === false ? 'Hapus Permanen' : 'Arsipkan'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
