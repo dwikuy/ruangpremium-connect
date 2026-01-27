@@ -3,6 +3,7 @@ import { Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   LayoutDashboard, 
   Package, 
@@ -35,27 +36,38 @@ const menuItems = [
 
 export function AdminLayout({ children, title, description }: AdminLayoutProps) {
   const location = useLocation();
-  const { user, loading, signOut, isAdmin, profile, refreshProfile } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [checkingRole, setCheckingRole] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Avoid premature redirect: useAuth sets `loading=false` before deferred profile fetch finishes.
-  // Ensure we have an up-to-date profile before evaluating `isAdmin`.
-  // Force a role refresh once when entering Admin routes to avoid stale in-memory role.
   useEffect(() => {
     let alive = true;
     (async () => {
       if (user && !loading) {
-        await refreshProfile();
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!alive) return;
+
+        if (error) {
+          console.error('Admin role check failed:', error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(data?.role === 'admin');
+        }
       }
       if (alive) setCheckingRole(false);
     })();
     return () => {
       alive = false;
     };
-  }, [user, loading, refreshProfile]);
+  }, [user, loading]);
 
-  if (loading || checkingRole || (user && !profile)) {
+  if (loading || checkingRole) {
     return (
       <div className="min-h-screen bg-background flex">
         <div className="w-64 bg-sidebar p-4">
