@@ -6,6 +6,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Forbidden from "./pages/Forbidden";
+import FAQ from "./pages/FAQ";
+import Terms from "./pages/Terms";
+import Refund from "./pages/Refund";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import Login from "./pages/Login";
@@ -52,6 +55,9 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/products" element={<Products />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/refund" element={<Refund />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
           <Route path="/checkout/:productId" element={<Checkout />} />
           <Route path="/invoice/:orderId" element={<Invoice />} />
