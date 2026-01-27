@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { PaymentInfo, OrderWithItems, OrderItem } from '@/types/database';
 
@@ -20,6 +20,9 @@ export function usePayment(orderId: string, guestToken?: string | null) {
     isPaid: false,
     isExpired: false,
   });
+
+  // Prevent repeated trigger calls while the invoice page is open
+  const fulfillmentTriggeredRef = useRef(false);
 
   // Fetch order and payment details
   const fetchOrderDetails = useCallback(async () => {
@@ -99,12 +102,32 @@ export function usePayment(orderId: string, guestToken?: string | null) {
         isExpired = new Date(payment.expires_at) < new Date();
       }
 
+      const orderStatus = order.status as string;
+      const isPaymentConfirmed =
+        orderStatus === 'PAID' || orderStatus === 'PROCESSING' || orderStatus === 'DELIVERED';
+      const isFulfillmentDone =
+        orderStatus === 'DELIVERED' || orderStatus === 'FAILED' || orderStatus === 'CANCELLED';
+
+      // If payment confirmed but fulfillment not finished, try to trigger fulfillment once
+      if (isPaymentConfirmed && !isFulfillmentDone && !fulfillmentTriggeredRef.current) {
+        fulfillmentTriggeredRef.current = true;
+        try {
+          await supabase.functions.invoke('trigger-fulfillment', {
+            body: { order_id: orderId },
+          });
+        } catch (e) {
+          // Don't block UI; job can be triggered later by admin or retry
+          console.warn('Failed to trigger fulfillment from invoice:', e);
+        }
+      }
+
       setState({
         loading: false,
         error: null,
         order: transformedOrder,
         payment: transformedOrder.payment,
-        isPaid: order.status === 'PAID' || order.status === 'PROCESSING' || order.status === 'DELIVERED',
+        // isPaid means payment is confirmed (success page), not necessarily delivered
+        isPaid: isPaymentConfirmed,
         isExpired,
       });
     } catch (error) {
@@ -152,7 +175,12 @@ export function usePayment(orderId: string, guestToken?: string | null) {
 
     // Set up polling every 5 seconds
     const pollInterval = setInterval(async () => {
-      if (state.isPaid || state.isExpired) {
+      const status = state.order?.status as string | undefined;
+      const isFulfillmentDone =
+        status === 'DELIVERED' || status === 'FAILED' || status === 'CANCELLED';
+
+      // Stop polling only when fulfillment is done (or payment expired)
+      if (isFulfillmentDone || state.isExpired) {
         clearInterval(pollInterval);
         return;
       }
@@ -164,17 +192,29 @@ export function usePayment(orderId: string, guestToken?: string | null) {
 
         if (error) throw error;
 
-        if (data.order?.status === 'PAID') {
-          // Payment confirmed, refresh full details
-          await fetchOrderDetails();
+        const latestStatus = data.order?.status as string | undefined;
+
+        // If payment confirmed, trigger fulfillment once (especially useful for manual/edge cases)
+        if ((latestStatus === 'PAID' || latestStatus === 'PROCESSING') && !fulfillmentTriggeredRef.current) {
+          fulfillmentTriggeredRef.current = true;
+          try {
+            await supabase.functions.invoke('trigger-fulfillment', {
+              body: { order_id: orderId },
+            });
+          } catch (e) {
+            console.warn('Failed to trigger fulfillment from payment poll:', e);
+          }
         }
+
+        // Always refresh full details to reflect fulfillment progress
+        await fetchOrderDetails();
       } catch (error) {
         console.error('Error polling payment status:', error);
       }
     }, 5000);
 
     return () => clearInterval(pollInterval);
-  }, [orderId, state.isPaid, state.isExpired, fetchOrderDetails]);
+  }, [orderId, state.order?.status, state.isExpired, fetchOrderDetails]);
 
   return {
     ...state,
