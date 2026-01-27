@@ -197,13 +197,79 @@ export function useUpdateOrderStatus() {
         .eq('id', orderId);
 
       if (error) throw error;
+
+      // If status changed to PAID, create fulfillment jobs and trigger processing
+      if (status === 'PAID') {
+        // Get order items with product info
+        const { data: orderItems, error: itemsError } = await supabase
+          .from('order_items')
+          .select('id, product_id, products(product_type)')
+          .eq('order_id', orderId);
+
+        if (itemsError) {
+          console.error('Failed to fetch order items:', itemsError);
+          throw new Error('Gagal mengambil item pesanan untuk fulfillment');
+        }
+
+        if (orderItems && orderItems.length > 0) {
+          // Check if fulfillment jobs already exist for this order
+          const orderItemIds = orderItems.map(item => item.id);
+          const { data: existingJobs } = await supabase
+            .from('fulfillment_jobs')
+            .select('order_item_id')
+            .in('order_item_id', orderItemIds);
+
+          const existingItemIds = new Set((existingJobs || []).map(j => j.order_item_id));
+
+          // Create fulfillment jobs only for items that don't have jobs yet
+          type ProductType = 'STOCK' | 'INVITE';
+          const newJobs = orderItems
+            .filter(item => !existingItemIds.has(item.id))
+            .map(item => {
+              const productType = (item.products as { product_type: string } | null)?.product_type;
+              const jobType: ProductType = (productType === 'INVITE' || productType === 'STOCK') ? productType : 'STOCK';
+              return {
+                order_item_id: item.id,
+                job_type: jobType,
+                status: 'PENDING' as const,
+              };
+            });
+
+          if (newJobs.length > 0) {
+            const { error: jobsError } = await supabase
+              .from('fulfillment_jobs')
+              .insert(newJobs);
+
+            if (jobsError) {
+              console.error('Failed to create fulfillment jobs:', jobsError);
+              throw new Error('Gagal membuat fulfillment job');
+            }
+
+            // Trigger fulfillment processing
+            try {
+              await supabase.functions.invoke('trigger-fulfillment', {
+                body: { order_id: orderId },
+              });
+            } catch (triggerError) {
+              console.error('Failed to trigger fulfillment:', triggerError);
+              // Don't throw - jobs are created, they can be processed later
+            }
+          }
+        }
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       queryClient.invalidateQueries({ queryKey: ['admin-order'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-fulfillment'] });
+      
+      const message = variables.status === 'PAID' 
+        ? 'Status pesanan diperbarui & fulfillment job dibuat'
+        : 'Status pesanan berhasil diperbarui';
+      
       toast({
         title: 'Berhasil',
-        description: 'Status pesanan berhasil diperbarui',
+        description: message,
       });
     },
     onError: (error) => {
