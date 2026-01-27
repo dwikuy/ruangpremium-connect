@@ -2,95 +2,100 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* =============================================
+   RUANGPREMIUM DESIGN SYSTEM
+   Dark Mode Premium dengan aksen Gold & Purple
+   ============================================= */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Dark Mode Premium - Default */
+    --background: 240 10% 4%; /* #0a0a0b */
+    --foreground: 60 9% 98%; /* Off-white */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 240 10% 6%;
+    --card-foreground: 60 9% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 240 10% 8%;
+    --popover-foreground: 60 9% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Gold Accent - Primary */
+    --primary: 43 74% 53%; /* #d4af37 */
+    --primary-foreground: 240 10% 4%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Deep Purple - Secondary */
+    --secondary: 263 70% 50%; /* #7c3aed */
+    --secondary-foreground: 60 9% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 10% 15%;
+    --muted-foreground: 240 5% 55%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 263 70% 50%;
+    --accent-foreground: 60 9% 98%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 60 9% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Success - Green */
+    --success: 142 76% 36%;
+    --success-foreground: 60 9% 98%;
 
-    --radius: 0.5rem;
+    /* Warning - Orange */
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 10% 4%;
 
-    --sidebar-background: 0 0% 98%;
+    --border: 240 10% 15%;
+    --input: 240 10% 15%;
+    --ring: 43 74% 53%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --radius: 0.75rem;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Glass morphism */
+    --glass: 240 10% 8% / 0.8;
+    --glass-border: 240 10% 20% / 0.5;
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* Gradient stops */
+    --gradient-gold-start: 43 74% 53%;
+    --gradient-gold-end: 38 92% 50%;
+    --gradient-purple-start: 263 70% 50%;
+    --gradient-purple-end: 280 80% 45%;
 
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar (Admin/Reseller) */
+    --sidebar-background: 240 10% 6%;
+    --sidebar-foreground: 60 9% 85%;
+    --sidebar-primary: 43 74% 53%;
+    --sidebar-primary-foreground: 240 10% 4%;
+    --sidebar-accent: 240 10% 12%;
+    --sidebar-accent-foreground: 60 9% 98%;
+    --sidebar-border: 240 10% 15%;
+    --sidebar-ring: 43 74% 53%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+  /* Light mode override (optional) */
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 98%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 43 74% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 263 70% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 5% 45%;
+    --accent: 263 70% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 10% 4%;
+    --border: 240 5% 90%;
+    --input: 240 5% 90%;
+    --ring: 43 74% 45%;
   }
 }
 
@@ -100,6 +105,156 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer components {
+  /* Glass morphism card */
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl;
+  }
+
+  /* Premium gradient button */
+  .btn-premium {
+    @apply relative overflow-hidden bg-gradient-to-r from-primary to-secondary text-primary-foreground font-semibold px-6 py-3 rounded-lg transition-all duration-300;
+    @apply hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.02];
+  }
+
+  .btn-premium::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-secondary to-primary opacity-0 transition-opacity duration-300;
+  }
+
+  .btn-premium:hover::before {
+    @apply opacity-100;
+  }
+
+  .btn-premium span {
+    @apply relative z-10;
+  }
+
+  /* Gold text gradient */
+  .text-gold-gradient {
+    @apply bg-gradient-to-r from-primary via-yellow-400 to-primary bg-clip-text text-transparent;
+  }
+
+  /* Purple to gold gradient */
+  .text-premium-gradient {
+    @apply bg-gradient-to-r from-secondary via-primary to-secondary bg-clip-text text-transparent;
+  }
+
+  /* Badge styles */
+  .badge-stock {
+    @apply bg-success/20 text-success border border-success/30 px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-invite {
+    @apply bg-secondary/20 text-secondary border border-secondary/30 px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-featured {
+    @apply bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  /* Product card hover effect */
+  .product-card {
+    @apply glass-card p-4 transition-all duration-300;
+    @apply hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10 hover:-translate-y-1;
+  }
+
+  /* Status badges */
+  .status-pending {
+    @apply bg-warning/20 text-warning border border-warning/30;
+  }
+
+  .status-paid {
+    @apply bg-success/20 text-success border border-success/30;
+  }
+
+  .status-processing {
+    @apply bg-secondary/20 text-secondary border border-secondary/30;
+  }
+
+  .status-delivered {
+    @apply bg-primary/20 text-primary border border-primary/30;
+  }
+
+  .status-failed {
+    @apply bg-destructive/20 text-destructive border border-destructive/30;
+  }
+
+  /* Glow effects */
+  .glow-gold {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 40px hsl(var(--primary) / 0.1);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 20px hsl(var(--secondary) / 0.3), 0 0 40px hsl(var(--secondary) / 0.1);
+  }
+}
+
+@layer utilities {
+  /* Animations */
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.1) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .animate-pulse-gold {
+    animation: pulse-gold 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-gold {
+    0%, 100% {
+      box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 10px hsl(var(--primary) / 0);
+    }
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
