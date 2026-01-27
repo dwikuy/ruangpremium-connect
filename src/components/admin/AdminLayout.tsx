@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import Forbidden from '@/pages/Forbidden';
 import { 
   LayoutDashboard, 
   Package, 
@@ -101,7 +102,7 @@ export function AdminLayout({ children, title, description }: AdminLayoutProps) 
   }
 
   if (!isAdmin) {
-    return <Navigate to="/account" replace />;
+    return <Forbidden />;
   }
 
   return (
