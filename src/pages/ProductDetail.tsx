@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Zap, Check, Star, ShoppingCart, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Package, Zap, Check, Star, ShoppingCart, AlertTriangle, Store } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,12 +7,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { useProduct } from '@/hooks/useProducts';
+import { useAuth } from '@/hooks/useAuth';
 import { formatRupiah } from '@/lib/format';
 
 export default function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { data: product, isLoading, error } = useProduct(slug || '');
+  const { profile, isReseller, isAdmin } = useAuth();
 
   if (isLoading) {
     return (
@@ -193,7 +195,7 @@ export default function ProductDetailPage() {
 
             {/* CTA */}
             <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="p-4">
+              <CardContent className="p-4 space-y-3">
                 <Button
                   size="lg"
                   className="btn-premium w-full"
@@ -203,7 +205,22 @@ export default function ProductDetailPage() {
                   <ShoppingCart className="mr-2 h-5 w-5" />
                   <span>{isAvailable ? 'Beli Sekarang' : 'Stok Habis'}</span>
                 </Button>
-                <p className="mt-3 text-center text-xs text-muted-foreground">
+
+                {/* Reseller Checkout Button */}
+                {(isReseller || isAdmin) && product.reseller_price && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full border-secondary text-secondary hover:bg-secondary/10"
+                    disabled={!isAvailable}
+                    onClick={() => navigate(`/reseller/checkout/${product.id}`)}
+                  >
+                    <Store className="mr-2 h-5 w-5" />
+                    <span>Beli Harga Reseller ({formatRupiah(product.reseller_price)})</span>
+                  </Button>
+                )}
+
+                <p className="text-center text-xs text-muted-foreground">
                   Pembayaran aman via QRIS • Proses otomatis
                 </p>
               </CardContent>
