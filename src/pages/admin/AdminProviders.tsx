@@ -219,7 +219,7 @@ export default function AdminProviders() {
       return { label: 'Cooldown', variant: 'destructive' as const };
     }
     if (account.max_daily_invites && (account.current_daily_invites || 0) >= account.max_daily_invites) {
-      return { label: 'Limit', variant: 'outline' as const };
+      return { label: 'Stok Habis', variant: 'outline' as const };
     }
     return { label: 'Aktif', variant: 'default' as const };
   };
@@ -299,8 +299,8 @@ export default function AdminProviders() {
                 </div>
                 <div className="bg-card border rounded-lg p-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div className="p-2 rounded-lg bg-success/10">
+                      <CheckCircle className="h-5 w-5 text-success" />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Aktif</p>
@@ -310,8 +310,8 @@ export default function AdminProviders() {
                 </div>
                 <div className="bg-card border rounded-lg p-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-yellow-500/10">
-                      <Clock className="h-5 w-5 text-yellow-500" />
+                    <div className="p-2 rounded-lg bg-warning/10">
+                      <Clock className="h-5 w-5 text-warning" />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Cooldown</p>
@@ -330,7 +330,7 @@ export default function AdminProviders() {
                 <TableRow>
                   <TableHead>Nama Akun</TableHead>
                   <TableHead>Provider</TableHead>
-                  <TableHead>Invite Hari Ini</TableHead>
+                  <TableHead>Invite Terpakai</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Terakhir Digunakan</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
@@ -394,7 +394,7 @@ export default function AdminProviders() {
                               variant="ghost"
                               size="icon"
                               onClick={() => resetDailyInvites(account.id)}
-                              title="Reset counter harian"
+                              title="Reset counter invite"
                             >
                               <RefreshCw className="h-4 w-4" />
                             </Button>
@@ -582,17 +582,21 @@ export default function AdminProviders() {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="max_invites">Maks. Invite per Hari</Label>
+              <Label htmlFor="max_invites">Maks. Total Invite (Stok)</Label>
               <Input
                 id="max_invites"
                 type="number"
                 min={1}
+                placeholder="Contoh: 5 = hanya bisa 5 invite total"
                 value={accountForm.max_daily_invites || ''}
                 onChange={(e) => setAccountForm(prev => ({ 
                   ...prev, 
                   max_daily_invites: e.target.value ? parseInt(e.target.value) : null 
                 }))}
               />
+              <p className="text-xs text-muted-foreground">
+                Jumlah maksimal invite yang bisa dikirim dari akun ini. Jika kosong = unlimited.
+              </p>
             </div>
 
             <div className="grid gap-2">

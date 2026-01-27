@@ -286,9 +286,9 @@ async function processInviteFulfillment(
 
   const account = providerAccounts[0] as ProviderAccount;
 
-  // Check daily quota
-  if (account.current_daily_invites >= account.max_daily_invites) {
-    throw new Error(`Provider account ${account.name} reached daily quota`);
+  // Check total quota (max_daily_invites is actually total stock, not daily limit)
+  if (account.max_daily_invites && account.current_daily_invites >= account.max_daily_invites) {
+    throw new Error(`Provider account ${account.name} has no remaining invite stock (${account.current_daily_invites}/${account.max_daily_invites})`);
   }
 
   // Get provider info
