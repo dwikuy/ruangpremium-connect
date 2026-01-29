@@ -97,15 +97,33 @@ export function useProduct(slug: string) {
       if (error) throw error;
       if (!data) return null;
 
-      // Get stock count for STOCK products
+      // Get stock count based on product type
       let stock_count = 0;
+      
       if (data.product_type === 'STOCK') {
+        // For STOCK: count available stock items
         const { count } = await supabase
           .from('stock_items')
           .select('*', { count: 'exact', head: true })
           .eq('product_id', data.id)
           .eq('status', 'AVAILABLE');
         stock_count = count || 0;
+      } else if (data.product_type === 'INVITE' && data.provider_id) {
+        // For INVITE: count available slots from provider accounts
+        const { data: accounts } = await supabase
+          .from('provider_accounts')
+          .select('max_daily_invites, current_daily_invites')
+          .eq('provider_id', data.provider_id)
+          .eq('is_active', true);
+        
+        if (accounts && accounts.length > 0) {
+          // Sum up remaining slots from all active accounts
+          stock_count = accounts.reduce((total, acc) => {
+            const max = acc.max_daily_invites || 0;
+            const used = acc.current_daily_invites || 0;
+            return total + Math.max(0, max - used);
+          }, 0);
+        }
       }
 
       return transformProduct({ ...data, stock_count });
@@ -133,15 +151,33 @@ export function useProductById(id: string) {
       if (error) throw error;
       if (!data) return null;
 
-      // Get stock count for STOCK products
+      // Get stock count based on product type
       let stock_count = 0;
+      
       if (data.product_type === 'STOCK') {
+        // For STOCK: count available stock items
         const { count } = await supabase
           .from('stock_items')
           .select('*', { count: 'exact', head: true })
           .eq('product_id', data.id)
           .eq('status', 'AVAILABLE');
         stock_count = count || 0;
+      } else if (data.product_type === 'INVITE' && data.provider_id) {
+        // For INVITE: count available slots from provider accounts
+        const { data: accounts } = await supabase
+          .from('provider_accounts')
+          .select('max_daily_invites, current_daily_invites')
+          .eq('provider_id', data.provider_id)
+          .eq('is_active', true);
+        
+        if (accounts && accounts.length > 0) {
+          // Sum up remaining slots from all active accounts
+          stock_count = accounts.reduce((total, acc) => {
+            const max = acc.max_daily_invites || 0;
+            const used = acc.current_daily_invites || 0;
+            return total + Math.max(0, max - used);
+          }, 0);
+        }
       }
 
       return transformProduct({ ...data, stock_count });
