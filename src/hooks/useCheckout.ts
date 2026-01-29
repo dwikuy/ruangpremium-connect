@@ -138,19 +138,6 @@ export function useCheckout(product: ProductWithCategory | null) {
     setLoading(true);
 
     try {
-      // Check stock for STOCK products
-      if (product.product_type === 'STOCK') {
-        const { count } = await supabase
-          .from('stock_items')
-          .select('*', { count: 'exact', head: true })
-          .eq('product_id', product.id)
-          .eq('status', 'AVAILABLE');
-
-        if ((count || 0) < formData.quantity) {
-          throw new Error('Stok tidak mencukupi');
-        }
-      }
-
       const subtotal = product.retail_price * formData.quantity;
       const discountAmount = couponValidation?.calculated_discount || 0;
       
@@ -187,7 +174,7 @@ export function useCheckout(product: ProductWithCategory | null) {
         couponId = coupon?.id;
       }
 
-      // Create order
+      // Create order first
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -212,6 +199,31 @@ export function useCheckout(product: ProductWithCategory | null) {
         throw new Error('Gagal membuat pesanan');
       }
 
+      // ATOMIC STOCK RESERVATION - prevents race conditions
+      const { data: reservationData, error: reservationError } = await supabase
+        .rpc('reserve_stock_for_order', {
+          p_product_id: product.id,
+          p_quantity: formData.quantity,
+          p_order_id: order.id
+        });
+
+      // Type assertion for the RPC response
+      const reservationResult = reservationData as { success: boolean; error?: string } | null;
+
+      if (reservationError) {
+        console.error('Stock reservation error:', reservationError);
+        // Rollback: delete the order we just created
+        await supabase.from('orders').delete().eq('id', order.id);
+        throw new Error('Gagal mereservasi stok');
+      }
+
+      if (!reservationResult?.success) {
+        console.error('Stock reservation failed:', reservationResult?.error);
+        // Rollback: delete the order we just created
+        await supabase.from('orders').delete().eq('id', order.id);
+        throw new Error(reservationResult?.error || 'Stok tidak mencukupi');
+      }
+
       // Create order item
       const { error: itemError } = await supabase
         .from('order_items')
@@ -226,6 +238,9 @@ export function useCheckout(product: ProductWithCategory | null) {
 
       if (itemError) {
         console.error('Order item creation error:', itemError);
+        // Rollback: release stock and delete order
+        await supabase.rpc('release_stock_reservation', { p_order_id: order.id });
+        await supabase.from('orders').delete().eq('id', order.id);
         throw new Error('Gagal membuat item pesanan');
       }
 
