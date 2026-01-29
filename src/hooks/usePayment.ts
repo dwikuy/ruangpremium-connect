@@ -25,7 +25,7 @@ export function usePayment(orderId: string, guestToken?: string | null) {
   const fulfillmentTriggeredRef = useRef(false);
 
   // Fetch order and payment details
-  const fetchOrderDetails = useCallback(async () => {
+  const fetchOrderDetails = useCallback(async (forceRefresh = false) => {
     if (!orderId) return;
 
     try {
@@ -103,8 +103,15 @@ export function usePayment(orderId: string, guestToken?: string | null) {
       }
 
       const orderStatus = order.status as string;
+      const paymentStatus = payment?.status as string | undefined;
+      
+      // isPaid is true when order status indicates payment confirmed OR payment record says PAID
       const isPaymentConfirmed =
-        orderStatus === 'PAID' || orderStatus === 'PROCESSING' || orderStatus === 'DELIVERED';
+        orderStatus === 'PAID' || 
+        orderStatus === 'PROCESSING' || 
+        orderStatus === 'DELIVERED' ||
+        paymentStatus === 'PAID';
+      
       const isFulfillmentDone =
         orderStatus === 'DELIVERED' || orderStatus === 'FAILED' || orderStatus === 'CANCELLED';
 
@@ -126,6 +133,10 @@ export function usePayment(orderId: string, guestToken?: string | null) {
       // Preserve any existing payment already obtained from backend function responses.
       setState((prev) => {
         const mergedPayment = transformedOrder.payment ?? prev.payment;
+        
+        // Double-check isPaid from previous state too (in case webhook updated faster)
+        const wasPreviouslyPaid = prev.isPaid;
+        
         return {
           loading: false,
           error: null,
@@ -135,7 +146,8 @@ export function usePayment(orderId: string, guestToken?: string | null) {
           },
           payment: mergedPayment,
           // isPaid means payment is confirmed (success page), not necessarily delivered
-          isPaid: isPaymentConfirmed,
+          // Keep it true if it was already true (prevents flickering back to QR)
+          isPaid: wasPreviouslyPaid || isPaymentConfirmed,
           isExpired,
         };
       });

@@ -277,42 +277,60 @@ export function CheckoutForm({
             <FormField
               control={form.control}
               name="quantity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <div className="flex items-center gap-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => field.onChange(Math.max(1, (field.value || 1) - 1))}
-                        disabled={(field.value || 1) <= 1}
-                      >
-                        -
-                      </Button>
-                      <Input
-                        type="number"
-                        min={1}
-                        className="w-20 text-center"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => field.onChange((field.value || 1) + 1)}
-                      >
-                        +
-                      </Button>
-                      <span className="text-muted-foreground">
-                        × {formatCurrency(product.retail_price)}
-                      </span>
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                // For STOCK products, limit quantity to available stock
+                const isStock = product.product_type === 'STOCK';
+                const maxQuantity = isStock && product.stock_count !== undefined 
+                  ? product.stock_count 
+                  : 99;
+                
+                return (
+                  <FormItem>
+                    <FormControl>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => field.onChange(Math.max(1, (field.value || 1) - 1))}
+                          disabled={(field.value || 1) <= 1}
+                        >
+                          -
+                        </Button>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={maxQuantity}
+                          className="w-20 text-center"
+                          {...field}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1;
+                            field.onChange(Math.min(val, maxQuantity));
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => field.onChange(Math.min((field.value || 1) + 1, maxQuantity))}
+                          disabled={(field.value || 1) >= maxQuantity}
+                        >
+                          +
+                        </Button>
+                        <span className="text-muted-foreground">
+                          × {formatCurrency(product.retail_price)}
+                        </span>
+                      </div>
+                    </FormControl>
+                    {isStock && product.stock_count !== undefined && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Stok tersedia: {product.stock_count}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
           </CardContent>
         </Card>

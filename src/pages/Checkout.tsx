@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Package, Clock, Shield } from 'lucide-react';
+import { ArrowLeft, Package, Clock, Shield, AlertTriangle } from 'lucide-react';
 import { useProductById } from '@/hooks/useProducts';
 import { useAuth } from '@/hooks/useAuth';
 import { useCheckout } from '@/hooks/useCheckout';
@@ -50,6 +50,40 @@ export default function Checkout() {
           <Button asChild>
             <Link to="/products">Kembali ke Katalog</Link>
           </Button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Check stock availability for STOCK products
+  const isStock = product.product_type === 'STOCK';
+  const stockAvailable = product.stock_count ?? 0;
+  const isOutOfStock = isStock && stockAvailable <= 0;
+
+  // If product is out of stock, show error page
+  if (isOutOfStock) {
+    return (
+      <MainLayout>
+        <div className="container py-16 text-center max-w-md mx-auto">
+          <div className="w-16 h-16 rounded-full bg-destructive/20 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
+          </div>
+          <h1 className="text-2xl font-bold mb-4">Stok Habis</h1>
+          <p className="text-muted-foreground mb-6">
+            Maaf, produk <strong>{product.name}</strong> saat ini tidak tersedia. 
+            Silakan cek kembali nanti atau pilih produk lain.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button asChild variant="outline">
+              <Link to={`/products/${product.slug}`}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Kembali ke Produk
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/products">Lihat Produk Lain</Link>
+            </Button>
+          </div>
         </div>
       </MainLayout>
     );
