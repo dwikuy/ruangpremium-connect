@@ -39,7 +39,7 @@ export default function Invoice() {
     );
   }
 
-  if (error || !order) {
+  if (!order) {
     return (
       <MainLayout>
         <div className="container py-16 text-center max-w-md mx-auto">
@@ -89,6 +89,21 @@ export default function Invoice() {
         </div>
 
         <div className="space-y-6">
+          {/* Error banner (keep order visible) */}
+          {error && (
+            <Card className="glass-card border-destructive/50">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Gagal memproses pembayaran</p>
+                    <p className="text-sm text-muted-foreground">{error}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* QR Code Section */}
           <QRCodeDisplay
             payment={payment}
