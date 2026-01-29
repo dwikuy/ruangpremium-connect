@@ -223,6 +223,23 @@ serve(async (req) => {
     if (paymentStatus === "PAID") {
       const order = payment.orders;
       
+      // Check if this is a wallet topup order
+      if (order?.notes === "WALLET_TOPUP" && order?.reseller_id) {
+        try {
+          await processWalletTopup(supabase, order, payment);
+          console.log(`Processed wallet topup for order ${payment.order_id}`);
+        } catch (topupError) {
+          console.error("Failed to process wallet topup:", topupError);
+          // Don't throw - can be processed manually
+        }
+        
+        // Return early - no fulfillment needed for topup
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       // Get order items and create fulfillment jobs
       const { data: orderItems } = await supabase
         .from("order_items")
@@ -415,4 +432,67 @@ async function processResellerCashback(
   });
 
   console.log(`Added cashback ${totalCashback} to reseller ${order.reseller_id}`);
+}
+
+// Process wallet topup when payment is successful
+async function processWalletTopup(
+  supabaseClient: any,
+  order: { reseller_id: string; id: string; subtotal: number },
+  payment: { id: string; net_amount: number | null }
+) {
+  const topupAmount = order.subtotal;
+  const resellerId = order.reseller_id;
+
+  // Get or create reseller wallet
+  const { data: wallet, error: walletError } = await supabaseClient
+    .from("reseller_wallets")
+    .select("*")
+    .eq("user_id", resellerId)
+    .maybeSingle();
+
+  if (walletError) throw walletError;
+
+  const currentBalance = wallet?.balance || 0;
+  const newBalance = currentBalance + topupAmount;
+
+  if (wallet) {
+    // Update existing wallet
+    await supabaseClient
+      .from("reseller_wallets")
+      .update({
+        balance: newBalance,
+        total_topup: (wallet.total_topup || 0) + topupAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", resellerId);
+  } else {
+    // Create new wallet
+    await supabaseClient.from("reseller_wallets").insert({
+      user_id: resellerId,
+      balance: topupAmount,
+      total_topup: topupAmount,
+    });
+  }
+
+  // Record transaction
+  await supabaseClient.from("wallet_transactions").insert({
+    user_id: resellerId,
+    amount: topupAmount,
+    balance_after: newBalance,
+    transaction_type: "TOPUP",
+    order_id: order.id,
+    payment_id: payment.id,
+    description: `Topup saldo wallet`,
+  });
+
+  // Mark the topup order as DELIVERED since topup is complete
+  await supabaseClient
+    .from("orders")
+    .update({
+      status: "DELIVERED",
+      delivered_at: new Date().toISOString(),
+    })
+    .eq("id", order.id);
+
+  console.log(`Wallet topup ${topupAmount} added for reseller ${resellerId}, new balance: ${newBalance}`);
 }
