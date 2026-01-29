@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ResellerLayout } from '@/components/reseller/ResellerLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,13 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useResellerStats, useWalletTransactions, useCreateTopup } from '@/hooks/useReseller';
 import { formatCurrency } from '@/lib/format';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Wallet, 
   ArrowDownLeft, 
   ArrowUpRight, 
   Plus,
   History,
-  CreditCard
+  CreditCard,
+  CheckCircle,
+  Loader2,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -35,22 +39,73 @@ const transactionTypeConfig: Record<string, { label: string; icon: typeof ArrowD
 
 const quickAmounts = [50000, 100000, 200000, 500000, 1000000];
 
+interface TopupPayment {
+  qrLink: string;
+  payUrl: string;
+  topupOrderId: string;
+  payment: {
+    id: string;
+    amount: number;
+    expires_at: string;
+  };
+}
+
 export default function ResellerWallet() {
-  const { data: stats, isLoading: statsLoading } = useResellerStats();
-  const { data: transactions, isLoading: transactionsLoading } = useWalletTransactions();
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useResellerStats();
+  const { data: transactions, isLoading: transactionsLoading, refetch: refetchTransactions } = useWalletTransactions();
   const createTopup = useCreateTopup();
   
   const [topupAmount, setTopupAmount] = useState<number>(100000);
   const [isTopupOpen, setIsTopupOpen] = useState(false);
+  const [topupPayment, setTopupPayment] = useState<TopupPayment | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // Poll payment status when showing QR
+  useEffect(() => {
+    if (!topupPayment?.topupOrderId) return;
+
+    const checkPaymentStatus = async () => {
+      setIsCheckingPayment(true);
+      try {
+        const { data: order } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', topupPayment.topupOrderId)
+          .single();
+
+        if (order?.status === 'PAID' || order?.status === 'DELIVERED') {
+          setPaymentSuccess(true);
+          refetchStats();
+          refetchTransactions();
+          // Auto close after 3 seconds
+          setTimeout(() => {
+            setTopupPayment(null);
+            setPaymentSuccess(false);
+            setIsTopupOpen(false);
+          }, 3000);
+        }
+      } finally {
+        setIsCheckingPayment(false);
+      }
+    };
+
+    const interval = setInterval(checkPaymentStatus, 3000);
+    return () => clearInterval(interval);
+  }, [topupPayment?.topupOrderId, refetchStats, refetchTransactions]);
 
   const handleTopup = async () => {
     if (topupAmount < 10000) return;
     
     const result = await createTopup.mutateAsync(topupAmount);
-    if (result?.payUrl) {
-      window.open(result.payUrl, '_blank');
+    if (result?.qrLink) {
+      setTopupPayment(result as TopupPayment);
     }
-    setIsTopupOpen(false);
+  };
+
+  const handleClosePayment = () => {
+    setTopupPayment(null);
+    setPaymentSuccess(false);
   };
 
   return (
@@ -82,62 +137,129 @@ export default function ResellerWallet() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <Dialog open={isTopupOpen} onOpenChange={setIsTopupOpen}>
+                  <Dialog open={isTopupOpen} onOpenChange={(open) => {
+                    if (!open) handleClosePayment();
+                    setIsTopupOpen(open);
+                  }}>
                     <DialogTrigger asChild>
                       <Button className="btn-premium w-full sm:w-auto">
                         <Plus className="h-4 w-4 mr-2" />
                         <span>Topup Saldo</span>
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-w-md">
                       <DialogHeader>
-                        <DialogTitle>Topup Saldo Wallet</DialogTitle>
+                        <DialogTitle>
+                          {paymentSuccess ? 'Pembayaran Berhasil!' : topupPayment ? 'Scan QRIS untuk Bayar' : 'Topup Saldo Wallet'}
+                        </DialogTitle>
                         <DialogDescription>
-                          Pilih nominal atau masukkan jumlah topup yang diinginkan
+                          {paymentSuccess 
+                            ? 'Saldo wallet Anda telah ditambahkan'
+                            : topupPayment 
+                              ? 'Scan kode QR di bawah menggunakan e-wallet Anda'
+                              : 'Pilih nominal atau masukkan jumlah topup yang diinginkan'
+                          }
                         </DialogDescription>
                       </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="grid grid-cols-3 gap-2">
-                          {quickAmounts.map((amount) => (
-                            <Button
-                              key={amount}
-                              variant={topupAmount === amount ? 'default' : 'outline'}
-                              onClick={() => setTopupAmount(amount)}
-                              className="text-sm"
-                            >
-                              {formatCurrency(amount)}
-                            </Button>
-                          ))}
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="custom-amount">Nominal Lainnya</Label>
-                          <Input
-                            id="custom-amount"
-                            type="number"
-                            min={10000}
-                            step={1000}
-                            value={topupAmount}
-                            onChange={(e) => setTopupAmount(Number(e.target.value))}
-                            placeholder="Minimal Rp 10.000"
-                          />
-                        </div>
-                        
-                        <div className="p-4 rounded-lg bg-muted">
-                          <div className="flex justify-between text-sm">
-                            <span>Jumlah Topup</span>
-                            <span className="font-bold">{formatCurrency(topupAmount)}</span>
+                      
+                      {paymentSuccess ? (
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <div className="p-4 rounded-full bg-success/20 mb-4">
+                            <CheckCircle className="h-16 w-16 text-success" />
                           </div>
+                          <p className="text-2xl font-bold text-success">
+                            +{formatCurrency(topupPayment?.payment.amount || 0)}
+                          </p>
+                          <p className="text-muted-foreground mt-2">
+                            Saldo berhasil ditambahkan
+                          </p>
                         </div>
-                        
-                        <Button 
-                          className="w-full btn-premium"
-                          onClick={handleTopup}
-                          disabled={topupAmount < 10000 || createTopup.isPending}
-                        >
-                          <span>{createTopup.isPending ? 'Membuat Invoice...' : 'Bayar dengan QRIS'}</span>
-                        </Button>
-                      </div>
+                      ) : topupPayment ? (
+                        <div className="space-y-4 py-4">
+                          {/* QR Code Display */}
+                          <div className="flex flex-col items-center">
+                            <div className="bg-white p-4 rounded-lg">
+                              <img 
+                                src={topupPayment.qrLink} 
+                                alt="QRIS Code" 
+                                className="w-64 h-64 object-contain"
+                              />
+                            </div>
+                            
+                            <div className="mt-4 text-center">
+                              <p className="text-sm text-muted-foreground">Total Pembayaran</p>
+                              <p className="text-2xl font-bold text-primary">
+                                {formatCurrency(topupPayment.payment.amount)}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                (Termasuk biaya admin)
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Status indicator */}
+                          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm">Menunggu pembayaran...</span>
+                          </div>
+
+                          {/* Cancel button */}
+                          <Button 
+                            variant="outline" 
+                            className="w-full"
+                            onClick={handleClosePayment}
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            Batalkan
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4 py-4">
+                          <div className="grid grid-cols-3 gap-2">
+                            {quickAmounts.map((amount) => (
+                              <Button
+                                key={amount}
+                                variant={topupAmount === amount ? 'default' : 'outline'}
+                                onClick={() => setTopupAmount(amount)}
+                                className="text-sm"
+                              >
+                                {formatCurrency(amount)}
+                              </Button>
+                            ))}
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="custom-amount">Nominal Lainnya</Label>
+                            <Input
+                              id="custom-amount"
+                              type="number"
+                              min={10000}
+                              step={1000}
+                              value={topupAmount}
+                              onChange={(e) => setTopupAmount(Number(e.target.value))}
+                              placeholder="Minimal Rp 10.000"
+                            />
+                          </div>
+                          
+                          <div className="p-4 rounded-lg bg-muted">
+                            <div className="flex justify-between text-sm">
+                              <span>Jumlah Topup</span>
+                              <span className="font-bold">{formatCurrency(topupAmount)}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              + biaya admin QRIS akan ditambahkan
+                            </p>
+                          </div>
+                          
+                          <Button 
+                            className="w-full btn-premium"
+                            onClick={handleTopup}
+                            disabled={topupAmount < 10000 || createTopup.isPending}
+                          >
+                            <span>{createTopup.isPending ? 'Membuat Invoice...' : 'Bayar dengan QRIS'}</span>
+                          </Button>
+                        </div>
+                      )}
                     </DialogContent>
                   </Dialog>
                 </div>

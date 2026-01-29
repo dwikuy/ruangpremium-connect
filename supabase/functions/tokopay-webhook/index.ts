@@ -367,13 +367,29 @@ async function generateTokopaySignature(
 }
 
 // Process reseller cashback when order is paid via QRIS
+// Cashback = margin (retail - reseller price) * cashback_rate%
 async function processResellerCashback(
   supabaseClient: any,
   order: { reseller_id: string; id: string },
   orderItems: Array<{ unit_price: number; quantity: number; products: { reseller_price: number | null } | null }>
 ) {
-  // Calculate cashback based on difference between retail and reseller price
-  let totalCashback = 0;
+  // Get cashback rate from system settings (default 100% of margin)
+  const { data: cashbackSetting } = await supabaseClient
+    .from("system_settings")
+    .select("value")
+    .eq("key", "reseller_cashback_rate")
+    .maybeSingle();
+
+  // Cashback rate is a percentage (0-100) of the margin
+  const cashbackRate = (cashbackSetting?.value as { percent?: number })?.percent ?? 100;
+  
+  if (cashbackRate <= 0) {
+    console.log("Cashback rate is 0%, skipping cashback processing");
+    return;
+  }
+
+  // Calculate total margin (retail price - reseller price) from base amounts
+  let totalMargin = 0;
 
   for (const item of orderItems) {
     const retailPrice = item.unit_price;
@@ -381,14 +397,24 @@ async function processResellerCashback(
     const margin = (retailPrice - resellerPrice) * item.quantity;
     
     if (margin > 0) {
-      totalCashback += margin;
+      totalMargin += margin;
     }
   }
 
-  if (totalCashback <= 0) {
-    console.log("No cashback to process - no margin or negative margin");
+  if (totalMargin <= 0) {
+    console.log("No margin to process - no cashback");
     return;
   }
+
+  // Apply cashback rate (percentage of margin)
+  const totalCashback = Math.floor(totalMargin * (cashbackRate / 100));
+
+  if (totalCashback <= 0) {
+    console.log(`Cashback amount is 0 after applying rate ${cashbackRate}%`);
+    return;
+  }
+
+  console.log(`Processing cashback: margin=${totalMargin}, rate=${cashbackRate}%, cashback=${totalCashback}`);
 
   // Get or create reseller wallet
   const { data: wallet, error: walletError } = await supabaseClient
@@ -435,12 +461,14 @@ async function processResellerCashback(
 }
 
 // Process wallet topup when payment is successful
+// Saldo yang masuk = total yang dibayar (termasuk fee)
 async function processWalletTopup(
   supabaseClient: any,
   order: { reseller_id: string; id: string; subtotal: number },
-  payment: { id: string; net_amount: number | null }
+  payment: { id: string; amount: number | null; net_amount: number | null }
 ) {
-  const topupAmount = order.subtotal;
+  // Use the actual amount paid (including fee), not just the base amount
+  const topupAmount = payment.amount || order.subtotal;
   const resellerId = order.reseller_id;
 
   // Get or create reseller wallet
