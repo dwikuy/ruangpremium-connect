@@ -981,6 +981,11 @@ export type Database = {
         }
         Returns: Json
       }
+      release_stock_reservation: { Args: { p_order_id: string }; Returns: Json }
+      reserve_stock_for_order: {
+        Args: { p_order_id: string; p_product_id: string; p_quantity: number }
+        Returns: Json
+      }
       validate_points_redemption: {
         Args: {
           p_points_to_redeem: number
