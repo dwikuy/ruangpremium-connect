@@ -163,6 +163,12 @@ export function useCreateTopup() {
       });
       
       if (error) throw error;
+      
+      // Check for application-level error in response
+      if (data && !data.success) {
+        throw new Error(data.error || 'Gagal membuat invoice topup');
+      }
+      
       return data;
     },
     onSuccess: () => {

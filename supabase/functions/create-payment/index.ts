@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -10,7 +9,10 @@ const corsHeaders = {
 };
 
 interface CreatePaymentRequest {
-  order_id: string;
+  order_id?: string;
+  type?: "order" | "wallet_topup";
+  amount?: number;
+  userId?: string;
 }
 
 interface TokopayResponse {
@@ -20,18 +22,36 @@ interface TokopayResponse {
     ref_id: string;
     nominal: number;
     total_bayar: number;
-    // Sometimes returned by Tokopay (see docs/examples)
     total_diterima?: number;
     pay_url: string;
     qr_link: string;
-    // Some Tokopay endpoints don't return expiry timestamp.
-    // Keep optional and fallback to a sane default.
     expired_at?: number;
   };
 }
 
+async function createTokopayPayment(
+  tokopayMerchantId: string,
+  tokopaySecret: string,
+  amount: number,
+  refId: string
+): Promise<TokopayResponse> {
+  const tokopayUrl = new URL("https://api.tokopay.id/v1/order");
+  tokopayUrl.searchParams.set("merchant", tokopayMerchantId);
+  tokopayUrl.searchParams.set("secret", tokopaySecret);
+  tokopayUrl.searchParams.set("ref_id", refId);
+  tokopayUrl.searchParams.set("nominal", amount.toString());
+  tokopayUrl.searchParams.set("metode", "QRIS");
+
+  console.log("Calling Tokopay API:", tokopayUrl.toString().replace(tokopaySecret, "***"));
+
+  const tokopayResponse = await fetch(tokopayUrl.toString(), {
+    method: "GET",
+  });
+
+  return await tokopayResponse.json();
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -44,8 +64,117 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { order_id }: CreatePaymentRequest = await req.json();
+    const body: CreatePaymentRequest = await req.json();
+    const { type = "order", order_id, amount, userId } = body;
 
+    // Handle wallet topup
+    if (type === "wallet_topup") {
+      if (!amount || amount < 10000) {
+        throw new Error("Minimum topup amount is Rp 10.000");
+      }
+      if (!userId) {
+        throw new Error("User ID is required for wallet topup");
+      }
+
+      // Check if user is a reseller
+      const { data: userRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .single();
+
+      if (!userRole || userRole.role !== "reseller") {
+        throw new Error("Only resellers can topup wallet");
+      }
+
+      // Create unique reference ID for topup
+      const refId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const topupAmount = Math.ceil(amount);
+
+      // Call Tokopay API
+      const tokopayData = await createTokopayPayment(
+        tokopayMerchantId,
+        tokopaySecret,
+        topupAmount,
+        refId
+      );
+
+      console.log("Tokopay response:", JSON.stringify(tokopayData, null, 2));
+
+      if (tokopayData.status !== "Success") {
+        throw new Error(`Tokopay error: ${JSON.stringify(tokopayData)}`);
+      }
+
+      const payableAmount = Number(tokopayData.data.total_bayar);
+      const nominalAmount = Number(tokopayData.data.nominal ?? topupAmount);
+      const feeAmount = Number.isFinite(payableAmount) ? Math.max(0, payableAmount - nominalAmount) : null;
+
+      const expiresAt = (() => {
+        const unixSeconds = tokopayData?.data?.expired_at;
+        if (typeof unixSeconds === "number" && Number.isFinite(unixSeconds) && unixSeconds > 0) {
+          return new Date(unixSeconds * 1000).toISOString();
+        }
+        return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      })();
+
+      // Create a wallet topup order record
+      const { data: topupOrder, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: userId,
+          customer_name: "Wallet Topup",
+          customer_email: "topup@internal",
+          subtotal: topupAmount,
+          total_amount: topupAmount,
+          status: "AWAITING_PAYMENT",
+          notes: "WALLET_TOPUP",
+          is_reseller_order: true,
+          reseller_id: userId,
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error("Topup order error:", orderError);
+        throw new Error("Failed to create topup order");
+      }
+
+      // Create payment record linked to topup order
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          order_id: topupOrder.id,
+          ref_id: refId,
+          tokopay_trx_id: tokopayData.data.trx_id,
+          amount: Number.isFinite(payableAmount) && payableAmount > 0 ? payableAmount : topupAmount,
+          fee: feeAmount,
+          net_amount: nominalAmount,
+          qr_link: tokopayData.data.qr_link,
+          pay_url: tokopayData.data.pay_url,
+          status: "PENDING",
+          expires_at: expiresAt,
+        })
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error("Payment insert error:", paymentError);
+        throw new Error("Failed to create payment record");
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          payment: payment,
+          payUrl: tokopayData.data.pay_url,
+          qrLink: tokopayData.data.qr_link,
+          topupOrderId: topupOrder.id,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Handle regular order payment
     if (!order_id) {
       throw new Error("order_id is required");
     }
@@ -76,7 +205,6 @@ serve(async (req) => {
     if (existingPayment && existingPayment.expires_at) {
       const expiresAt = new Date(existingPayment.expires_at);
       if (expiresAt > new Date()) {
-        // Return existing valid payment
         return new Response(
           JSON.stringify({
             success: true,
@@ -89,33 +217,15 @@ serve(async (req) => {
 
     // Create unique reference ID
     const refId = `RP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    const amount = Math.ceil(order.total_amount);
+    const orderAmount = Math.ceil(order.total_amount);
 
-    // Generate Tokopay signature using MD5
-    const signatureString = `${tokopayMerchantId}:${tokopaySecret}:${refId}`;
-    
-    // Use crypto.subtle with MD5 from older deno std
-    const encoder = new TextEncoder();
-    const data = encoder.encode(signatureString);
-    const hashBuffer = await crypto.subtle.digest("MD5", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const signature = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-
-    // Call Tokopay API to create QRIS payment (Simple Order GET)
-    const tokopayUrl = new URL("https://api.tokopay.id/v1/order");
-    tokopayUrl.searchParams.set("merchant", tokopayMerchantId);
-    tokopayUrl.searchParams.set("secret", tokopaySecret);
-    tokopayUrl.searchParams.set("ref_id", refId);
-    tokopayUrl.searchParams.set("nominal", amount.toString());
-    tokopayUrl.searchParams.set("metode", "QRIS"); // Simple Order uses "metode"
-
-    console.log("Calling Tokopay API:", tokopayUrl.toString().replace(tokopaySecret, "***"));
-
-    const tokopayResponse = await fetch(tokopayUrl.toString(), {
-      method: "GET",
-    });
-
-    const tokopayData: TokopayResponse = await tokopayResponse.json();
+    // Call Tokopay API
+    const tokopayData = await createTokopayPayment(
+      tokopayMerchantId,
+      tokopaySecret,
+      orderAmount,
+      refId
+    );
 
     console.log("Tokopay response:", JSON.stringify(tokopayData, null, 2));
 
@@ -123,15 +233,10 @@ serve(async (req) => {
       throw new Error(`Tokopay error: ${JSON.stringify(tokopayData)}`);
     }
 
-    // Tokopay returns the final payable amount including fee in `total_bayar`.
-    // We store it so the UI can show the exact amount the customer must pay.
     const payableAmount = Number(tokopayData.data.total_bayar);
-    const nominalAmount = Number(tokopayData.data.nominal ?? amount);
+    const nominalAmount = Number(tokopayData.data.nominal ?? orderAmount);
     const feeAmount = Number.isFinite(payableAmount) ? Math.max(0, payableAmount - nominalAmount) : null;
 
-    // Calculate expiry
-    // Tokopay docs vary by endpoint; sometimes `expired_at` is missing.
-    // If it's missing/invalid, default to 24 hours from now.
     const expiresAt = (() => {
       const unixSeconds = tokopayData?.data?.expired_at;
       if (typeof unixSeconds === "number" && Number.isFinite(unixSeconds) && unixSeconds > 0) {
@@ -147,7 +252,7 @@ serve(async (req) => {
         order_id: order_id,
         ref_id: refId,
         tokopay_trx_id: tokopayData.data.trx_id,
-        amount: Number.isFinite(payableAmount) && payableAmount > 0 ? payableAmount : amount,
+        amount: Number.isFinite(payableAmount) && payableAmount > 0 ? payableAmount : orderAmount,
         fee: feeAmount,
         net_amount: nominalAmount,
         qr_link: tokopayData.data.qr_link,
