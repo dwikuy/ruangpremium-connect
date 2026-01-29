@@ -121,14 +121,23 @@ export function usePayment(orderId: string, guestToken?: string | null) {
         }
       }
 
-      setState({
-        loading: false,
-        error: null,
-        order: transformedOrder,
-        payment: transformedOrder.payment,
-        // isPaid means payment is confirmed (success page), not necessarily delivered
-        isPaid: isPaymentConfirmed,
-        isExpired,
+      // NOTE: In some setups, reading `payments` from the client can be blocked by access rules,
+      // so `transformedOrder.payment` may be null even though a payment exists.
+      // Preserve any existing payment already obtained from backend function responses.
+      setState((prev) => {
+        const mergedPayment = transformedOrder.payment ?? prev.payment;
+        return {
+          loading: false,
+          error: null,
+          order: {
+            ...transformedOrder,
+            payment: mergedPayment,
+          },
+          payment: mergedPayment,
+          // isPaid means payment is confirmed (success page), not necessarily delivered
+          isPaid: isPaymentConfirmed,
+          isExpired,
+        };
       });
     } catch (error) {
       console.error('Error fetching order:', error);
@@ -153,6 +162,38 @@ export function usePayment(orderId: string, guestToken?: string | null) {
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
+
+      // Update UI immediately with payment returned by backend function
+      // so QR can render even if client-side `payments` read is restricted.
+      if (data.payment) {
+        const p = data.payment as any;
+        const paymentFromFn: PaymentInfo = {
+          id: p.id,
+          tokopay_trx_id: p.tokopay_trx_id,
+          ref_id: p.ref_id,
+          amount: p.amount,
+          qr_link: p.qr_link,
+          pay_url: p.pay_url,
+          status: p.status,
+          expires_at: p.expires_at,
+          paid_at: p.paid_at,
+        };
+
+        setState((prev) => {
+          const isExpiredLocal = paymentFromFn.expires_at
+            ? new Date(paymentFromFn.expires_at) < new Date()
+            : prev.isExpired;
+
+          return {
+            ...prev,
+            loading: false,
+            error: null,
+            payment: paymentFromFn,
+            order: prev.order ? { ...prev.order, payment: paymentFromFn } : prev.order,
+            isExpired: isExpiredLocal,
+          };
+        });
+      }
 
       // Refresh order details to get updated payment
       await fetchOrderDetails();
@@ -193,6 +234,37 @@ export function usePayment(orderId: string, guestToken?: string | null) {
         if (error) throw error;
 
         const latestStatus = data.order?.status as string | undefined;
+
+        // Merge latest payment info from backend (works even if client-side payments read is restricted)
+        if (data.payment) {
+          const p = data.payment as any;
+          const paymentFromFn: PaymentInfo = {
+            id: p.id,
+            tokopay_trx_id: p.tokopay_trx_id ?? null,
+            ref_id: p.ref_id,
+            amount: p.amount,
+            qr_link: p.qr_link,
+            pay_url: p.pay_url,
+            status: p.status,
+            expires_at: p.expires_at,
+            paid_at: p.paid_at,
+          };
+
+          setState((prev) => {
+            const isExpiredLocal = paymentFromFn.expires_at
+              ? new Date(paymentFromFn.expires_at) < new Date()
+              : prev.isExpired;
+            const isPaidLocal =
+              latestStatus === 'PAID' || latestStatus === 'PROCESSING' || latestStatus === 'DELIVERED';
+            return {
+              ...prev,
+              payment: paymentFromFn,
+              order: prev.order ? { ...prev.order, payment: paymentFromFn, status: (latestStatus as any) ?? prev.order.status } : prev.order,
+              isExpired: isExpiredLocal,
+              isPaid: isPaidLocal,
+            };
+          });
+        }
 
         // If payment confirmed, trigger fulfillment once (especially useful for manual/edge cases)
         if ((latestStatus === 'PAID' || latestStatus === 'PROCESSING') && !fulfillmentTriggeredRef.current) {
