@@ -1,19 +1,87 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface TokopayCallback {
-  trx_id: string;
-  ref_id: string;
-  status: string; // "Success", "Pending", "Failed", "Expired"
-  nominal: number;
-  total_bayar: number;
-  via: string;
-  signature: string;
+type TokopayCallback =
+  | {
+      // Common JSON webhook payload observed from Tokopay
+      reference?: string; // trx id
+      reff_id?: string; // ref id
+      signature?: string;
+      status?: string; // "Success", "Pending", "Failed", "Expired"
+      data?: {
+        total_dibayar?: number;
+        total_diterima?: number;
+        payment_channel?: string;
+        created_at?: string;
+        updated_at?: string;
+        [k: string]: unknown;
+      };
+      [k: string]: unknown;
+    }
+  | {
+      // Legacy / form-data style
+      trx_id?: string;
+      ref_id?: string;
+      status?: string;
+      nominal?: number;
+      total_bayar?: number;
+      via?: string;
+      signature?: string;
+      [k: string]: unknown;
+    };
+
+function normalizeCallback(raw: TokopayCallback) {
+  const trx_id = (raw as any).trx_id ?? (raw as any).reference ?? "";
+  const ref_id = (raw as any).ref_id ?? (raw as any).reff_id ?? "";
+  const status = (raw as any).status ?? "";
+  const signature = (raw as any).signature ?? "";
+
+  const nominal = Number((raw as any).nominal ?? (raw as any).data?.total_diterima ?? 0);
+  const total_bayar = Number((raw as any).total_bayar ?? (raw as any).data?.total_dibayar ?? 0);
+  const total_diterima = Number((raw as any).data?.total_diterima ?? (Number.isFinite(nominal) ? nominal : 0));
+
+  return {
+    trx_id: String(trx_id || ""),
+    ref_id: String(ref_id || ""),
+    status: String(status || ""),
+    signature: String(signature || ""),
+    nominal: Number.isFinite(nominal) ? nominal : 0,
+    total_bayar: Number.isFinite(total_bayar) ? total_bayar : 0,
+    total_diterima: Number.isFinite(total_diterima) ? total_diterima : 0,
+  };
+}
+
+async function safeParseBody(req: Request): Promise<unknown> {
+  const contentType = req.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return await req.json();
+  }
+
+  // If Tokopay sends POST without content-type header, req.formData() will throw.
+  // We'll try text->json first, then fallback to urlencoded.
+  const rawText = await req.text();
+  const trimmed = rawText.trim();
+  if (!trimmed) return {};
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // try urlencoded
+    try {
+      const params = new URLSearchParams(trimmed);
+      const obj: Record<string, string> = {};
+      for (const [k, v] of params.entries()) obj[k] = v;
+      return obj;
+    } catch {
+      return { raw: trimmed };
+    }
+  }
 }
 
 serve(async (req) => {
@@ -29,40 +97,17 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Get callback data - Tokopay sends as form data or query params
-    let callbackData: TokopayCallback;
-    
+    // Get callback data - Tokopay may send JSON without content-type, urlencoded, or query params
+    let rawCallback: TokopayCallback;
     if (req.method === "POST") {
-      const contentType = req.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        callbackData = await req.json();
-      } else {
-        const formData = await req.formData();
-        callbackData = {
-          trx_id: formData.get("trx_id") as string,
-          ref_id: formData.get("ref_id") as string,
-          status: formData.get("status") as string,
-          nominal: Number(formData.get("nominal")),
-          total_bayar: Number(formData.get("total_bayar")),
-          via: formData.get("via") as string,
-          signature: formData.get("signature") as string,
-        };
-      }
+      rawCallback = (await safeParseBody(req)) as TokopayCallback;
     } else {
-      // GET request with query params
       const url = new URL(req.url);
-      callbackData = {
-        trx_id: url.searchParams.get("trx_id") || "",
-        ref_id: url.searchParams.get("ref_id") || "",
-        status: url.searchParams.get("status") || "",
-        nominal: Number(url.searchParams.get("nominal")),
-        total_bayar: Number(url.searchParams.get("total_bayar")),
-        via: url.searchParams.get("via") || "",
-        signature: url.searchParams.get("signature") || "",
-      };
+      rawCallback = Object.fromEntries(url.searchParams.entries()) as TokopayCallback;
     }
 
-    console.log("Received Tokopay callback:", JSON.stringify(callbackData, null, 2));
+    const callbackData = normalizeCallback(rawCallback);
+    console.log("Received Tokopay callback:", JSON.stringify(rawCallback, null, 2));
 
     // Verify signature
     const expectedSignature = await generateSignature(
@@ -75,7 +120,7 @@ serve(async (req) => {
     // Log webhook
     await supabase.from("webhook_logs").insert({
       source: "tokopay",
-      payload: callbackData,
+      payload: rawCallback,
       signature: callbackData.signature,
       is_valid: signatureValid,
       event_type: callbackData.status,
@@ -123,14 +168,24 @@ serve(async (req) => {
 
     // Update payment
     const now = new Date().toISOString();
+
+    // Tokopay amounts:
+    // - total_dibayar: paid by customer (includes fee)
+    // - total_diterima: received by merchant (net)
+    const fee =
+      callbackData.total_bayar > 0 && callbackData.total_diterima > 0
+        ? Math.max(0, callbackData.total_bayar - callbackData.total_diterima)
+        : null;
+
     await supabase
       .from("payments")
       .update({
         status: paymentStatus,
         paid_at: paymentStatus === "PAID" ? now : null,
-        net_amount: callbackData.total_bayar,
-        fee: callbackData.nominal - callbackData.total_bayar,
-        webhook_data: callbackData,
+        amount: callbackData.total_bayar || undefined,
+        net_amount: callbackData.total_diterima || undefined,
+        fee,
+        webhook_data: rawCallback,
       })
       .eq("id", payment.id);
 
@@ -148,7 +203,7 @@ serve(async (req) => {
       .from("webhook_logs")
       .update({ processed: true })
       .eq("source", "tokopay")
-      .eq("payload->>ref_id", callbackData.ref_id);
+      .or(`payload->>ref_id.eq.${callbackData.ref_id},payload->>reff_id.eq.${callbackData.ref_id}`);
 
     // If paid, trigger fulfillment job creation
     if (paymentStatus === "PAID") {
@@ -243,6 +298,7 @@ async function generateSignature(trxId: string, refId: string, secret: string): 
   const signatureString = `${trxId}:${refId}:${secret}`;
   const encoder = new TextEncoder();
   const data = encoder.encode(signatureString);
+  // Use std crypto polyfill to support MD5 in Deno
   const hashBuffer = await crypto.subtle.digest("MD5", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
