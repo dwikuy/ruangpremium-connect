@@ -20,6 +20,8 @@ interface TokopayResponse {
     ref_id: string;
     nominal: number;
     total_bayar: number;
+    // Sometimes returned by Tokopay (see docs/examples)
+    total_diterima?: number;
     pay_url: string;
     qr_link: string;
     // Some Tokopay endpoints don't return expiry timestamp.
@@ -121,6 +123,12 @@ serve(async (req) => {
       throw new Error(`Tokopay error: ${JSON.stringify(tokopayData)}`);
     }
 
+    // Tokopay returns the final payable amount including fee in `total_bayar`.
+    // We store it so the UI can show the exact amount the customer must pay.
+    const payableAmount = Number(tokopayData.data.total_bayar);
+    const nominalAmount = Number(tokopayData.data.nominal ?? amount);
+    const feeAmount = Number.isFinite(payableAmount) ? Math.max(0, payableAmount - nominalAmount) : null;
+
     // Calculate expiry
     // Tokopay docs vary by endpoint; sometimes `expired_at` is missing.
     // If it's missing/invalid, default to 24 hours from now.
@@ -139,7 +147,9 @@ serve(async (req) => {
         order_id: order_id,
         ref_id: refId,
         tokopay_trx_id: tokopayData.data.trx_id,
-        amount: amount,
+        amount: Number.isFinite(payableAmount) && payableAmount > 0 ? payableAmount : amount,
+        fee: feeAmount,
+        net_amount: nominalAmount,
         qr_link: tokopayData.data.qr_link,
         pay_url: tokopayData.data.pay_url,
         status: "PENDING",
