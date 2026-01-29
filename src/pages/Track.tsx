@@ -123,7 +123,18 @@ export default function Track() {
     // If we don't have data yet, wait for initial fetch
     if (!order || isTerminal(order.status)) return;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      // If Tokopay webhook fails (e.g. signature mismatch), actively refresh payment status via backend.
+      // This will update the order/payment rows server-side, then we re-fetch the order.
+      try {
+        await supabase.functions.invoke('check-payment-status', {
+          body: { order_id: orderId },
+        });
+      } catch (e) {
+        // Don't block UI polling; we still show the latest DB state.
+        console.warn('check-payment-status failed from Track polling:', e);
+      }
+
       // Keep updating until terminal
       fetchOrder(orderId, guestToken);
     }, 5000);
