@@ -85,8 +85,9 @@ export function useResellerCheckout(product: ProductWithCategory | null) {
           points_used: 0,
           points_discount: 0,
           total_amount: subtotal,
-          status: formData.payment_method === 'wallet' ? 'PAID' : 'AWAITING_PAYMENT',
-          paid_at: formData.payment_method === 'wallet' ? new Date().toISOString() : null,
+          // For wallet payments we finalize (deduct + mark paid + fulfillment) in backend for reliability.
+          status: 'AWAITING_PAYMENT',
+          paid_at: null,
         })
         .select()
         .single();
@@ -113,37 +114,22 @@ export function useResellerCheckout(product: ProductWithCategory | null) {
         throw new Error('Gagal membuat item pesanan');
       }
 
-      // If wallet payment, deduct balance and record transaction
+      // If wallet payment, finalize payment in backend (deduct wallet + mark PAID + create fulfillment jobs)
       if (formData.payment_method === 'wallet') {
-        // Deduct wallet balance
-        const newBalance = wallet.balance - subtotal;
-        const { error: walletError } = await supabase
-          .from('reseller_wallets')
-          .update({
-            balance: newBalance,
-            total_spent: wallet.total_spent + subtotal,
-          })
-          .eq('user_id', userId);
+        const { data: walletPayData, error: walletPayError } = await supabase.functions.invoke(
+          'wallet-purchase',
+          {
+            body: { order_id: order.id },
+          }
+        );
 
-        if (walletError) {
-          console.error('Wallet update error:', walletError);
-          throw new Error('Gagal memotong saldo wallet');
+        if (walletPayError) {
+          console.error('Wallet purchase invoke error:', walletPayError);
+          throw new Error('Gagal memproses pembayaran wallet');
         }
 
-        // Record wallet transaction
-        const { error: txError } = await supabase
-          .from('wallet_transactions')
-          .insert({
-            user_id: userId,
-            order_id: order.id,
-            transaction_type: 'PURCHASE',
-            amount: -subtotal,
-            balance_after: newBalance,
-            description: `Pembelian ${product.name} x${formData.quantity}`,
-          });
-
-        if (txError) {
-          console.error('Wallet transaction error:', txError);
+        if (walletPayData && walletPayData.success === false) {
+          throw new Error(walletPayData.error || 'Gagal memproses pembayaran wallet');
         }
 
         // Invalidate wallet queries
