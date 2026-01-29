@@ -109,20 +109,11 @@ export function useProduct(slug: string) {
           .eq('status', 'AVAILABLE');
         stock_count = count || 0;
       } else if (data.product_type === 'INVITE' && data.provider_id) {
-        // For INVITE: count available slots from provider accounts
-        const { data: accounts } = await supabase
-          .from('provider_accounts')
-          .select('max_daily_invites, current_daily_invites')
-          .eq('provider_id', data.provider_id)
-          .eq('is_active', true);
-        
-        if (accounts && accounts.length > 0) {
-          // Sum up remaining slots from all active accounts
-          stock_count = accounts.reduce((total, acc) => {
-            const max = acc.max_daily_invites || 0;
-            const used = acc.current_daily_invites || 0;
-            return total + Math.max(0, max - used);
-          }, 0);
+        // For INVITE: use RPC to count slots (bypasses RLS on provider_accounts)
+        const { data: slots, error: slotsErr } = await supabase
+          .rpc('get_provider_remaining_slots', { p_provider_id: data.provider_id });
+        if (!slotsErr && typeof slots === 'number') {
+          stock_count = slots;
         }
       }
 
@@ -166,20 +157,11 @@ export function useProductById(id: string) {
           .eq('status', 'AVAILABLE');
         stock_count = count || 0;
       } else if (data.product_type === 'INVITE' && data.provider_id) {
-        // For INVITE: count available slots from provider accounts
-        const { data: accounts } = await supabase
-          .from('provider_accounts')
-          .select('max_daily_invites, current_daily_invites')
-          .eq('provider_id', data.provider_id)
-          .eq('is_active', true);
-        
-        if (accounts && accounts.length > 0) {
-          // Sum up remaining slots from all active accounts
-          stock_count = accounts.reduce((total, acc) => {
-            const max = acc.max_daily_invites || 0;
-            const used = acc.current_daily_invites || 0;
-            return total + Math.max(0, max - used);
-          }, 0);
+        // For INVITE: use RPC to count slots (bypasses RLS on provider_accounts)
+        const { data: slots, error: slotsErr } = await supabase
+          .rpc('get_provider_remaining_slots', { p_provider_id: data.provider_id });
+        if (!slotsErr && typeof slots === 'number') {
+          stock_count = slots;
         }
       }
 
@@ -211,8 +193,32 @@ export function useFeaturedProducts() {
 
       if (error) throw error;
 
-      return (data || []).map(transformProduct);
+      // Enrich with stock counts
+      const enriched = await Promise.all(
+        (data || []).map(async (product) => {
+          let stock_count = 0;
+          
+          if (product.product_type === 'STOCK') {
+            const { count } = await supabase
+              .from('stock_items')
+              .select('*', { count: 'exact', head: true })
+              .eq('product_id', product.id)
+              .eq('status', 'AVAILABLE');
+            stock_count = count || 0;
+          } else if (product.product_type === 'INVITE' && product.provider_id) {
+            const { data: slots } = await supabase
+              .rpc('get_provider_remaining_slots', { p_provider_id: product.provider_id });
+            if (typeof slots === 'number') stock_count = slots;
+          }
+          
+          return transformProduct({ ...product, stock_count });
+        })
+      );
+
+      return enriched;
     },
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
 }
 
