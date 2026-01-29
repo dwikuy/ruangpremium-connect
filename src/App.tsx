@@ -9,6 +9,8 @@ import Forbidden from "./pages/Forbidden";
 import FAQ from "./pages/FAQ";
 import Terms from "./pages/Terms";
 import Refund from "./pages/Refund";
+import Privacy from "./pages/Privacy";
+import Contact from "./pages/Contact";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import Login from "./pages/Login";
@@ -58,6 +60,8 @@ const App = () => (
           <Route path="/faq" element={<FAQ />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/refund" element={<Refund />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/contact" element={<Contact />} />
           <Route path="/products/:slug" element={<ProductDetail />} />
           <Route path="/checkout/:productId" element={<Checkout />} />
           <Route path="/invoice/:orderId" element={<Invoice />} />
