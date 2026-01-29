@@ -169,13 +169,16 @@ export function useCreateTopup() {
         throw new Error(data.error || 'Gagal membuat invoice topup');
       }
       
-      return data;
+      // Return the data with QRIS info
+      return {
+        qrLink: data.qrLink,
+        payUrl: data.payUrl,
+        topupOrderId: data.topupOrderId,
+        payment: data.payment,
+      };
     },
     onSuccess: () => {
-      toast({
-        title: 'Invoice Topup Dibuat',
-        description: 'Silakan lakukan pembayaran QRIS.',
-      });
+      // Don't show toast here - let the component handle it
       queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
     },
     onError: (error: Error) => {

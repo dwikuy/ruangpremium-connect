@@ -180,7 +180,7 @@ export default function ResellerOrders() {
                             </p>
                           )}
                         </div>
-                        <Link to={`/invoice/${order.id}`}>
+                        <Link to={`/reseller/orders/${order.id}`}>
                           <Button variant="outline" size="sm">
                             <ExternalLink className="h-4 w-4 mr-2" />
                             Detail
