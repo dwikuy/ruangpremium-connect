@@ -69,6 +69,8 @@ export default function Invoice() {
     );
   }
 
+  const payableAmount = payment?.amount ?? order.total_amount;
+
   return (
     <MainLayout>
       <div className="container py-8 max-w-2xl mx-auto">
@@ -107,7 +109,7 @@ export default function Invoice() {
           {/* QR Code Section */}
           <QRCodeDisplay
             payment={payment}
-            amount={order.total_amount}
+            amount={payableAmount}
             loading={loading}
             isExpired={isExpired}
             onCreatePayment={createPayment}

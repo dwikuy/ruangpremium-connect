@@ -76,15 +76,14 @@ export function QRCodeDisplay({
     return (
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-center">Siap untuk Pembayaran</CardTitle>
+          <CardTitle className="text-center">Pembayaran QRIS</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4">
           <p className="text-muted-foreground text-center">
-            Klik tombol di bawah untuk membuat QR Code pembayaran QRIS
+            Klik tombol untuk menampilkan QRIS, lalu scan dari e-wallet / m-banking.
           </p>
-          <div className="text-2xl font-bold text-gold">{formatCurrency(amount)}</div>
-          <Button onClick={onCreatePayment} className="btn-premium">
-            Buat QR Pembayaran
+          <Button onClick={onCreatePayment} className="btn-premium w-full max-w-md">
+            Bayar {formatCurrency(amount)}
           </Button>
         </CardContent>
       </Card>

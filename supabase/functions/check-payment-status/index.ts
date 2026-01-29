@@ -53,7 +53,12 @@ serve(async (req) => {
         },
         payment: payment ? {
           id: payment.id,
+          ref_id: payment.ref_id,
+          tokopay_trx_id: payment.tokopay_trx_id,
           status: payment.status,
+          amount: payment.amount,
+          fee: payment.fee,
+          net_amount: payment.net_amount,
           qr_link: payment.qr_link,
           pay_url: payment.pay_url,
           expires_at: payment.expires_at,
