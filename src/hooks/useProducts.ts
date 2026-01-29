@@ -129,6 +129,9 @@ export function useProduct(slug: string) {
       return transformProduct({ ...data, stock_count });
     },
     enabled: !!slug,
+    // Keep stock/slot count fresh (admin may change stock while user is viewing)
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -183,6 +186,9 @@ export function useProductById(id: string) {
       return transformProduct({ ...data, stock_count });
     },
     enabled: !!id,
+    // Keep stock/slot count fresh (used by checkout)
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
 }
 

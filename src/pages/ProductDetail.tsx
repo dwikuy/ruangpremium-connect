@@ -50,8 +50,10 @@ export default function ProductDetailPage() {
     );
   }
 
+  const stockAvailable = product.stock_count ?? 0;
+  const isOutOfStock = stockAvailable <= 0;
+  const isAvailable = !isOutOfStock;
   const isStock = product.product_type === 'STOCK';
-  const isAvailable = isStock ? (product.stock_count || 0) > 0 : true;
 
   return (
     <MainLayout>
@@ -104,12 +106,12 @@ export default function ProductDetailPage() {
                   {isStock ? (
                     <>
                       <Package className="mr-1 h-3 w-3" />
-                      Stok Tersedia
+                      {isAvailable ? 'Stok Tersedia' : 'Stok Habis'}
                     </>
                   ) : (
                     <>
                       <Zap className="mr-1 h-3 w-3" />
-                      Auto Invite
+                      {isAvailable ? 'Slot Tersedia' : 'Slot Habis'}
                     </>
                   )}
                 </Badge>
@@ -153,21 +155,21 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {/* Stock Info */}
-            {isStock && (
-              <div className="flex items-center gap-2">
-                <div
-                  className={`h-2 w-2 rounded-full ${
-                    isAvailable ? 'bg-success' : 'bg-destructive'
-                  }`}
-                />
-                <span className={isAvailable ? 'text-success' : 'text-destructive'}>
-                  {isAvailable
-                    ? `Stok tersedia: ${product.stock_count}`
-                    : 'Stok habis'}
-                </span>
-              </div>
-            )}
+            {/* Stock / Slot Info */}
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  isAvailable ? 'bg-success' : 'bg-destructive'
+                }`}
+              />
+              <span className={isAvailable ? 'text-success' : 'text-destructive'}>
+                {isAvailable
+                  ? `${isStock ? 'Stok' : 'Slot'} tersedia: ${stockAvailable}`
+                  : isStock
+                    ? 'Stok habis'
+                    : 'Slot habis'}
+              </span>
+            </div>
 
             {/* Sold Count */}
             {product.total_sold > 0 && (
