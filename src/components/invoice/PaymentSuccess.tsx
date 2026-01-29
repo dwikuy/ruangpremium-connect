@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { CheckCircle, Package, ArrowRight, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { DeliveryResult } from '@/components/order/DeliveryResult';
 import type { OrderWithItems } from '@/types/database';
 
 interface PaymentSuccessProps {
@@ -137,7 +138,7 @@ export function PaymentSuccess({ order, guestToken }: PaymentSuccessProps) {
         </Card>
       ) : null}
 
-      {/* Delivery Result (if delivered) */}
+      {/* Delivery Result (if delivered) - Using DeliveryResult component */}
       {order.status === 'DELIVERED' && order.items.some(item => item.delivery_data) && (
         <Card className="glass-card border-gold/50">
           <CardHeader>
@@ -146,12 +147,12 @@ export function PaymentSuccess({ order, guestToken }: PaymentSuccessProps) {
           <CardContent className="space-y-4">
             {order.items.map((item) => (
               item.delivery_data && (
-                <div key={item.id} className="p-4 bg-muted/50 rounded-lg">
-                  <p className="font-medium mb-2">{item.product_name}</p>
-                  <pre className="text-sm bg-background p-3 rounded overflow-x-auto">
-                    {JSON.stringify(item.delivery_data, null, 2)}
-                  </pre>
-                </div>
+                <DeliveryResult
+                  key={item.id}
+                  productName={item.product_name}
+                  deliveryData={item.delivery_data as Record<string, unknown>}
+                  deliveredAt={item.delivered_at}
+                />
               )
             ))}
           </CardContent>
