@@ -41,6 +41,8 @@ function normalizeCallback(raw: TokopayCallback) {
   const ref_id = (raw as any).ref_id ?? (raw as any).reff_id ?? "";
   const status = (raw as any).status ?? "";
   const signature = (raw as any).signature ?? "";
+  // Extract merchant_id from data object (used for signature verification)
+  const merchant_id = (raw as any).data?.merchant_id ?? "";
 
   const nominal = Number((raw as any).nominal ?? (raw as any).data?.total_diterima ?? 0);
   const total_bayar = Number((raw as any).total_bayar ?? (raw as any).data?.total_dibayar ?? 0);
@@ -49,6 +51,7 @@ function normalizeCallback(raw: TokopayCallback) {
   return {
     trx_id: String(trx_id || ""),
     ref_id: String(ref_id || ""),
+    merchant_id: String(merchant_id || ""),
     status: String(status || ""),
     signature: String(signature || ""),
     nominal: Number.isFinite(nominal) ? nominal : 0,
@@ -93,6 +96,7 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const tokopaySecret = Deno.env.get("TOKOPAY_SECRET")!;
+  const tokopayMerchantId = Deno.env.get("TOKOPAY_MERCHANT_ID")!;
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -110,15 +114,22 @@ serve(async (req) => {
     console.log("Received Tokopay callback:", JSON.stringify(rawCallback, null, 2));
 
     // Verify signature
-    // Tokopay signature formats may differ across integrations. We validate against
-    // a small set of known MD5 constructions (case-insensitive).
-    const expectedSignatures = await generateSignatures(
-      callbackData.trx_id,
-      callbackData.ref_id,
-      tokopaySecret
+    // Per Tokopay docs: signature = MD5(merchant_id:secret:ref_id)
+    // We use merchant_id from env or from callback data
+    const expectedSignature = await generateTokopaySignature(
+      tokopayMerchantId,
+      tokopaySecret,
+      callbackData.ref_id
     );
     const receivedSig = String(callbackData.signature || "").trim().toLowerCase();
-    const signatureValid = expectedSignatures.includes(receivedSig);
+    const signatureValid = receivedSig === expectedSignature;
+
+    console.log("Signature verification:", {
+      received: receivedSig,
+      expected: expectedSignature,
+      ref_id: callbackData.ref_id,
+      valid: signatureValid
+    });
 
     // Log webhook
     await supabase.from("webhook_logs").insert({
@@ -132,7 +143,7 @@ serve(async (req) => {
     if (!signatureValid) {
       console.error("Invalid signature:", {
         received: callbackData.signature,
-        expected_any_of: expectedSignatures,
+        expected: expectedSignature,
       });
       throw new Error("Invalid signature");
     }
@@ -257,7 +268,7 @@ serve(async (req) => {
         // Don't throw - fulfillment can be retried later
       }
 
-      // Send webhook notification for PAID status
+      // Send webhook notification for PAID status (for reseller API)
       try {
         const webhookUrl = `${supabaseUrl}/functions/v1/send-webhook`;
         await fetch(webhookUrl, {
@@ -275,6 +286,26 @@ serve(async (req) => {
       } catch (webhookError) {
         console.error("Failed to send webhook:", webhookError);
         // Don't throw - webhook can be retried
+      }
+
+      // Send email notification for PAID status
+      try {
+        const notificationUrl = `${supabaseUrl}/functions/v1/send-notification`;
+        await fetch(notificationUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ 
+            order_id: payment.order_id,
+            event_type: "order.paid"
+          }),
+        });
+        console.log(`Sent paid notification for order ${payment.order_id}`);
+      } catch (notifError) {
+        console.error("Failed to send notification:", notifError);
+        // Don't throw - notification can be retried
       }
     }
 
@@ -305,36 +336,17 @@ async function md5Hex(input: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function generateSignatures(trxId: string, refId: string, secret: string): Promise<string[]> {
-  const t = String(trxId || "");
-  const r = String(refId || "");
-  const s = String(secret || "").trim();
-
-  // Known variants seen in the wild / docs screenshots:
-  // - md5(trx_id:ref_id:secret)
-  // - md5(trx_id:ref_id:secret) but ref_id might be empty in some payloads
-  // - md5(trx_id+ref_id+secret) (no delimiters)
-  // - md5(trx_id:secret:ref_id)
-  // - md5(ref_id:trx_id:secret)
-  const parts = [t, r, s];
-  const perms: string[][] = [
-    [parts[0], parts[1], parts[2]],
-    [parts[0], parts[2], parts[1]],
-    [parts[1], parts[0], parts[2]],
-    [parts[1], parts[2], parts[0]],
-    [parts[2], parts[0], parts[1]],
-    [parts[2], parts[1], parts[0]],
-  ];
-
-  const variants = [
-    // With ':' delimiter
-    ...perms.map((p) => p.join(":")),
-    // Without delimiter
-    ...perms.map((p) => p.join("")),
-  ];
-
-  const hashes = await Promise.all(variants.map(md5Hex));
-  return hashes.map((h) => h.toLowerCase());
+/**
+ * Generate Tokopay signature per official docs:
+ * signature = MD5(merchant_id:secret:ref_id)
+ */
+async function generateTokopaySignature(
+  merchantId: string,
+  secret: string,
+  refId: string
+): Promise<string> {
+  const input = `${merchantId}:${secret}:${refId}`;
+  return await md5Hex(input);
 }
 
 // Process reseller cashback when order is paid via QRIS
