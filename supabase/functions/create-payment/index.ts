@@ -22,7 +22,9 @@ interface TokopayResponse {
     total_bayar: number;
     pay_url: string;
     qr_link: string;
-    expired_at: number;
+    // Some Tokopay endpoints don't return expiry timestamp.
+    // Keep optional and fallback to a sane default.
+    expired_at?: number;
   };
 }
 
@@ -119,8 +121,16 @@ serve(async (req) => {
       throw new Error(`Tokopay error: ${JSON.stringify(tokopayData)}`);
     }
 
-    // Calculate expiry (Tokopay returns Unix timestamp)
-    const expiresAt = new Date(tokopayData.data.expired_at * 1000).toISOString();
+    // Calculate expiry
+    // Tokopay docs vary by endpoint; sometimes `expired_at` is missing.
+    // If it's missing/invalid, default to 24 hours from now.
+    const expiresAt = (() => {
+      const unixSeconds = tokopayData?.data?.expired_at;
+      if (typeof unixSeconds === "number" && Number.isFinite(unixSeconds) && unixSeconds > 0) {
+        return new Date(unixSeconds * 1000).toISOString();
+      }
+      return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    })();
 
     // Create payment record
     const { data: payment, error: paymentError } = await supabase
