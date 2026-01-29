@@ -55,10 +55,9 @@ export default function Checkout() {
     );
   }
 
-  // Check stock availability for STOCK products
-  const isStock = product.product_type === 'STOCK';
+  // Check stock availability for both STOCK and INVITE products
   const stockAvailable = product.stock_count ?? 0;
-  const isOutOfStock = isStock && stockAvailable <= 0;
+  const isOutOfStock = stockAvailable <= 0;
 
   // If product is out of stock, show error page
   if (isOutOfStock) {
@@ -180,11 +179,13 @@ export default function Checkout() {
                     </div>
                   )}
 
-                  {product.product_type === 'STOCK' && product.stock_count !== undefined && (
+                  {product.stock_count !== undefined && product.stock_count >= 0 && (
                     <div className="flex items-center gap-2 text-sm">
                       <Package className="h-4 w-4" />
                       <span className={product.stock_count > 0 ? 'text-success' : 'text-destructive'}>
-                        {product.stock_count > 0 ? `${product.stock_count} tersedia` : 'Stok habis'}
+                        {product.stock_count > 0 
+                          ? `${product.stock_count} ${product.product_type === 'INVITE' ? 'slot' : 'stok'} tersedia` 
+                          : 'Stok habis'}
                       </span>
                     </div>
                   )}
