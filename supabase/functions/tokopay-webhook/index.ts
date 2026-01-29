@@ -110,12 +110,15 @@ serve(async (req) => {
     console.log("Received Tokopay callback:", JSON.stringify(rawCallback, null, 2));
 
     // Verify signature
-    const expectedSignature = await generateSignature(
+    // Tokopay signature formats may differ across integrations. We validate against
+    // a small set of known MD5 constructions (case-insensitive).
+    const expectedSignatures = await generateSignatures(
       callbackData.trx_id,
       callbackData.ref_id,
       tokopaySecret
     );
-    const signatureValid = callbackData.signature === expectedSignature;
+    const receivedSig = String(callbackData.signature || "").trim().toLowerCase();
+    const signatureValid = expectedSignatures.includes(receivedSig);
 
     // Log webhook
     await supabase.from("webhook_logs").insert({
@@ -129,7 +132,7 @@ serve(async (req) => {
     if (!signatureValid) {
       console.error("Invalid signature:", {
         received: callbackData.signature,
-        expected: expectedSignature,
+        expected_any_of: expectedSignatures,
       });
       throw new Error("Invalid signature");
     }
@@ -293,15 +296,45 @@ serve(async (req) => {
   }
 });
 
-async function generateSignature(trxId: string, refId: string, secret: string): Promise<string> {
-  // Tokopay signature: md5(trx_id:ref_id:secret)
-  const signatureString = `${trxId}:${refId}:${secret}`;
+async function md5Hex(input: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(signatureString);
+  const data = encoder.encode(input);
   // Use std crypto polyfill to support MD5 in Deno
   const hashBuffer = await crypto.subtle.digest("MD5", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateSignatures(trxId: string, refId: string, secret: string): Promise<string[]> {
+  const t = String(trxId || "");
+  const r = String(refId || "");
+  const s = String(secret || "").trim();
+
+  // Known variants seen in the wild / docs screenshots:
+  // - md5(trx_id:ref_id:secret)
+  // - md5(trx_id:ref_id:secret) but ref_id might be empty in some payloads
+  // - md5(trx_id+ref_id+secret) (no delimiters)
+  // - md5(trx_id:secret:ref_id)
+  // - md5(ref_id:trx_id:secret)
+  const parts = [t, r, s];
+  const perms: string[][] = [
+    [parts[0], parts[1], parts[2]],
+    [parts[0], parts[2], parts[1]],
+    [parts[1], parts[0], parts[2]],
+    [parts[1], parts[2], parts[0]],
+    [parts[2], parts[0], parts[1]],
+    [parts[2], parts[1], parts[0]],
+  ];
+
+  const variants = [
+    // With ':' delimiter
+    ...perms.map((p) => p.join(":")),
+    // Without delimiter
+    ...perms.map((p) => p.join("")),
+  ];
+
+  const hashes = await Promise.all(variants.map(md5Hex));
+  return hashes.map((h) => h.toLowerCase());
 }
 
 // Process reseller cashback when order is paid via QRIS

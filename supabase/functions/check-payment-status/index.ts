@@ -82,13 +82,33 @@ serve(async (req) => {
       tokopayUrl.searchParams.set("secret", tokopaySecret);
       tokopayUrl.searchParams.set("ref_id", payment.ref_id);
 
-      const resp = await fetch(tokopayUrl.toString(), { method: "GET" });
-      const tokopayData = await resp.json();
+      const resp = await fetch(tokopayUrl.toString(), {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          // Some gateways respond with HTML when User-Agent is missing.
+          "User-Agent": "LovableCloud/1.0 (+https://lovable.app)",
+        },
+      });
 
-      const tpStatus = String(tokopayData?.status ?? "");
+      const raw = await resp.text();
+      let tokopayData: any;
+      try {
+        tokopayData = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          `Tokopay returned non-JSON (status ${resp.status}). First bytes: ${raw.slice(0, 120)}`
+        );
+      }
+
+      // Tokopay: top-level status == request status (e.g. "Success"),
+      // payment status is inside data.status (e.g. "Paid" / "Unpaid" / "Expired").
+      const tpStatus = String(tokopayData?.data?.status ?? tokopayData?.status ?? "");
       const tpTrxId = tokopayData?.data?.trx_id ?? payment.tokopay_trx_id ?? null;
       const tpTotalBayar = Number(tokopayData?.data?.total_bayar ?? NaN);
-      const tpTotalDiterima = Number(tokopayData?.data?.total_diterima ?? tokopayData?.data?.nominal ?? NaN);
+      const tpTotalDiterima = Number(
+        tokopayData?.data?.total_diterima ?? tokopayData?.data?.nominal ?? NaN
+      );
       const fee =
         Number.isFinite(tpTotalBayar) && Number.isFinite(tpTotalDiterima)
           ? Math.max(0, tpTotalBayar - tpTotalDiterima)
@@ -98,8 +118,8 @@ serve(async (req) => {
       let paymentStatus: "PENDING" | "PAID" | "EXPIRED" | "FAILED" = "PENDING";
       let orderStatus: "AWAITING_PAYMENT" | "PAID" | "CANCELLED" = "AWAITING_PAYMENT";
       switch (tpStatus.toLowerCase()) {
-        case "success":
         case "paid":
+        case "success": // some Tokopay channels use "Success" as paid marker
           paymentStatus = "PAID";
           orderStatus = "PAID";
           break;
@@ -110,6 +130,11 @@ serve(async (req) => {
         case "failed":
           paymentStatus = "FAILED";
           orderStatus = "CANCELLED";
+          break;
+        case "unpaid":
+        case "pending":
+          paymentStatus = "PENDING";
+          orderStatus = "AWAITING_PAYMENT";
           break;
         default:
           paymentStatus = "PENDING";
