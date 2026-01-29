@@ -79,7 +79,7 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/support" className="text-muted-foreground transition-colors hover:text-primary">
+                <Link to="/contact" className="text-muted-foreground transition-colors hover:text-primary">
                   Hubungi Kami
                 </Link>
               </li>
